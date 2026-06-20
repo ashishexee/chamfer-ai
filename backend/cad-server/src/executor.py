@@ -3,66 +3,26 @@ import sys
 import tempfile
 import subprocess
 import json
+import base64
 from pathlib import Path
 
 
-def validate_geometry(shape) -> dict:
-    """Run geometric validation checks on a CadQuery shape."""
-    checks = {}
+def execute_cadquery(
+    code: str,
+    params: dict | None = None,
+    render_snapshots: bool = False,
+    render_png: bool = False,
+    render_dim_views: bool = False,
+) -> dict:
+    """Execute CadQuery code in a sandboxed subprocess and return file bytes + validation + snapshots.
 
-    try:
-        vol = shape.val().Volume()
-        checks["volume"] = round(vol, 2)
-        checks["has_volume"] = vol > 0
-    except Exception:
-        checks["volume"] = 0
-        checks["has_volume"] = False
-
-    try:
-        area = shape.val().Area()
-        checks["surface_area"] = round(area, 2)
-    except Exception:
-        checks["surface_area"] = 0
-
-    try:
-        bbox = shape.val().BoundingBox()
-        checks["bounding_box"] = {
-            "xmin": round(bbox.xmin, 2), "xmax": round(bbox.xmax, 2),
-            "ymin": round(bbox.ymin, 2), "ymax": round(bbox.ymax, 2),
-            "zmin": round(bbox.zmin, 2), "zmax": round(bbox.zmax, 2),
-            "size": [round(bbox.xlen, 2), round(bbox.ylen, 2), round(bbox.zlen, 2)],
-        }
-    except Exception:
-        checks["bounding_box"] = None
-
-    try:
-        center = shape.val().Center()
-        checks["center_of_mass"] = [round(center.x, 2), round(center.y, 2), round(center.z, 2)]
-    except Exception:
-        checks["center_of_mass"] = None
-
-    try:
-        checks["is_valid"] = shape.val().isValid()
-    except Exception:
-        checks["is_valid"] = False
-
-    # Sanity checks
-    warnings = []
-    if not checks.get("has_volume", False):
-        warnings.append("Model has zero volume — may be a surface, not a solid")
-    if checks.get("bounding_box"):
-        size = checks["bounding_box"]["size"]
-        if any(s > 10000 for s in size):
-            warnings.append(f"Model is very large ({size}mm) — check units")
-        if any(s < 0.01 and s > 0 for s in size):
-            warnings.append(f"Model is very small ({size}mm) — check units")
-    checks["warnings"] = warnings
-
-    return checks
-
-
-def execute_cadquery(code: str, params: dict | None = None) -> dict:
-    """Execute CadQuery code in a sandboxed subprocess and return file bytes + validation."""
+    Args:
+        code: CadQuery Python source code
+        params: Optional parameter substitutions
+        render_snapshots: Render SVG snapshots (for user display)
+        render_png: Render PNG snapshots (for LLM visual inspection)
+        render_dim_views: Render 2D dimensional orthographic views (top/front/side)
+    """
     from params import substitute_params
 
     processed_code = substitute_params(code, params) if params else code
@@ -74,8 +34,65 @@ def execute_cadquery(code: str, params: dict | None = None) -> dict:
         step_path = Path(work_dir) / "output.step"
         glb_path = Path(work_dir) / "output.glb"
         validation_path = Path(work_dir) / "validation.json"
+        inspection_path = Path(work_dir) / "inspection.json"
+        snapshot_dir = Path(work_dir) / "snapshots"
+        snapshots_path = Path(work_dir) / "snapshots.json"
+        png_snapshots_path = Path(work_dir) / "png_snapshots.json"
+        dim_views_path = Path(work_dir) / "dim_views.json"
 
         user_code_path.write_text(processed_code, encoding="utf-8")
+
+        # ── SVG snapshot rendering (for user display) ──
+        svg_snapshot_code = ""
+        if render_snapshots:
+            svg_snapshot_code = f'''
+    try:
+        import sys as _sys
+        _sys.path.insert(0, {str(Path(__file__).parent.resolve())!r})
+        from snapshot import render_snapshots as _render_svg
+        _snap_paths = _render_svg(r, {str(snapshot_dir)!r})
+        _snaps = {{}}
+        for _view, _path in _snap_paths.items():
+            with open(_path, "r") as _sf:
+                _snaps[_view] = _sf.read()
+        with open({str(snapshots_path)!r}, "w") as _sf:
+            json.dump(_snaps, _sf)
+    except Exception as _se:
+        with open({str(snapshots_path)!r}, "w") as _sf:
+            json.dump({{"error": str(_se)}}, _sf)
+'''
+
+        # ── PNG snapshot rendering (for LLM visual inspection) ──
+        png_snapshot_code = ""
+        if render_png:
+            png_snapshot_code = f'''
+    try:
+        import sys as _sys2
+        _sys2.path.insert(0, {str(Path(__file__).parent.resolve())!r})
+        from png_snapshot import render_png_snapshots as _render_png
+        _png_snaps = _render_png({str(stl_path)!r}, {str(snapshot_dir)!r})
+        with open({str(png_snapshots_path)!r}, "w") as _pf:
+            json.dump(_png_snaps, _pf)
+    except Exception as _pse:
+        with open({str(png_snapshots_path)!r}, "w") as _pf:
+            json.dump({{"error": str(_pse)}}, _pf)
+'''
+
+        # ── 2D dimensional views (top/front/side with dimensions) ──
+        dim_views_code = ""
+        if render_dim_views:
+            dim_views_code = f'''
+    try:
+        import sys as _sys3
+        _sys3.path.insert(0, {str(Path(__file__).parent.resolve())!r})
+        from dim_views import render_dim_views as _render_dim
+        _dim_views = _render_dim({str(stl_path)!r}, {str(snapshot_dir)!r})
+        with open({str(dim_views_path)!r}, "w") as _df:
+            json.dump(_dim_views, _df)
+    except Exception as _dve:
+        with open({str(dim_views_path)!r}, "w") as _df:
+            json.dump({{"error": str(_dve)}}, _df)
+'''
 
         runner = f'''
 import cadquery as cq
@@ -99,30 +116,43 @@ try:
         pass
 
     # Run validation
-    validation = {{"volume": 0, "surface_area": 0, "bounding_box": None, "is_valid": False, "warnings": []}}
-    try:
-        val = r.val()
-        validation["volume"] = round(val.Volume(), 2)
-        validation["surface_area"] = round(val.Area(), 2)
-        bb = val.BoundingBox()
-        validation["bounding_box"] = {{
-            "size": [round(bb.xlen, 2), round(bb.ylen, 2), round(bb.zlen, 2)],
-            "xmin": round(bb.xmin, 2), "xmax": round(bb.xmax, 2),
-            "ymin": round(bb.ymin, 2), "ymax": round(bb.ymax, 2),
-            "zmin": round(bb.zmin, 2), "zmax": round(bb.zmax, 2),
-        }}
-        validation["is_valid"] = val.isValid()
-        validation["has_volume"] = validation["volume"] > 0
-        if validation["volume"] <= 0:
-            validation["warnings"].append("Model has zero volume")
-        if any(s > 10000 for s in validation["bounding_box"]["size"]):
-            validation["warnings"].append("Model is very large, check units")
-    except Exception as ve:
-        validation["warnings"].append(f"Validation error: {{ve}}")
+    val = r.val()
+    validation = {{
+        "volume": round(val.Volume(), 3),
+        "surface_area": round(val.Area(), 3),
+        "is_valid": val.isValid(),
+        "has_volume": val.Volume() > 0,
+        "bounding_box": {{
+            "size": [round(val.BoundingBox().xlen, 3), round(val.BoundingBox().ylen, 3), round(val.BoundingBox().zlen, 3)],
+            "min": [round(val.BoundingBox().xmin, 3), round(val.BoundingBox().ymin, 3), round(val.BoundingBox().zmin, 3)],
+            "max": [round(val.BoundingBox().xmax, 3), round(val.BoundingBox().ymax, 3), round(val.BoundingBox().zmax, 3)],
+        }},
+    }}
+
+    warnings = []
+    if validation["volume"] <= 0:
+        warnings.append("Model has zero volume")
+    bb_size = validation["bounding_box"]["size"]
+    if any(s > 10000 for s in bb_size):
+        warnings.append(f"Model is very large ({{bb_size}}mm), check units")
+    if any(0 < s < 0.01 for s in bb_size):
+        warnings.append(f"Model is very small ({{bb_size}}mm), check units")
+    validation["warnings"] = warnings
 
     with open({str(validation_path)!r}, "w") as vf:
         json.dump(validation, vf)
 
+    # Run detailed inspection
+    try:
+        sys.path.insert(0, {str(Path(__file__).parent.resolve())!r})
+        from inspector import inspect_geometry
+        inspection = inspect_geometry(r)
+        with open({str(inspection_path)!r}, "w") as inf:
+            json.dump(inspection, inf)
+    except Exception as ie:
+        with open({str(inspection_path)!r}, "w") as inf:
+            json.dump({{"error": str(ie)}}, inf)
+{svg_snapshot_code}{png_snapshot_code}{dim_views_code}
     print("SUCCESS")
 except Exception as e:
     print(f"ERROR: {{e}}", file=sys.stderr)
@@ -132,7 +162,7 @@ except Exception as e:
 
         result = subprocess.run(
             [sys.executable, str(runner_path)],
-            capture_output=True, text=True, timeout=30, cwd=work_dir,
+            capture_output=True, text=True, timeout=60, cwd=work_dir,
         )
 
         if result.returncode != 0:
@@ -149,10 +179,42 @@ except Exception as e:
             except Exception:
                 validation = {}
 
+        inspection = {}
+        if inspection_path.exists():
+            try:
+                inspection = json.loads(inspection_path.read_text())
+            except Exception:
+                inspection = {}
+
+        snapshots = {}
+        if snapshots_path.exists():
+            try:
+                snapshots = json.loads(snapshots_path.read_text())
+            except Exception:
+                snapshots = {}
+
+        png_snapshots = {}
+        if png_snapshots_path.exists():
+            try:
+                png_snapshots = json.loads(png_snapshots_path.read_text())
+            except Exception:
+                png_snapshots = {}
+
+        dim_views = {}
+        if dim_views_path.exists():
+            try:
+                dim_views = json.loads(dim_views_path.read_text())
+            except Exception:
+                dim_views = {}
+
         return {
             "success": True,
             "stl": stl_bytes,
             "step": step_bytes,
             "glb": glb_bytes,
             "validation": validation,
+            "inspection": inspection,
+            "snapshots": snapshots,
+            "png_snapshots": png_snapshots,
+            "dim_views": dim_views,
         }

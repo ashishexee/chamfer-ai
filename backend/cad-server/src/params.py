@@ -21,12 +21,19 @@ def extract_parameters(code: str) -> list[dict[str, Any]]:
 
 
 def substitute_params(code: str, params: dict[str, float]) -> str:
-    """Replace top-level variable assignments with new parameter values, preserving comments."""
+    """Replace top-level variable assignments with new parameter values, preserving comments and integer types."""
     result = code
     for name, value in params.items():
+        # Detect if original value was an integer (no decimal point in source)
+        original_match = re.search(rf'^{name}\s*=\s*([\d.]+)', result, re.MULTILINE)
+        if original_match and '.' not in original_match.group(1):
+            formatted_value = int(value)
+        else:
+            formatted_value = value
+
         result = re.sub(
             rf'^({name}\s*=\s*)([\d.]+)(\s*#.*)?$',
-            rf'\g<1>{value}\3',
+            rf'\g<1>{formatted_value}\3',
             result,
             flags=re.MULTILINE,
         )
