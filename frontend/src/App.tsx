@@ -1,8 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Eye } from 'lucide-react';
 import { NutIcon } from '@/components/hardware/NutIcon';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
-import type { Parameter, Message, InspectionData, ClarificationOption, WorkflowStep } from '@/types';
+import type { ParameterSchema, Message, InspectionData, ClarificationOption, WorkflowStep } from '@/types';
 import { API_URL } from '@/lib/constants';
 // Components
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -10,8 +9,7 @@ import { PreviewPanel } from '@/components/layout/PreviewPanel';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { StreamingMessage } from '@/components/chat/StreamingMessage';
 import { ClarificationMessage } from '@/components/chat/ClarificationMessage';
-import { ClarificationAnswers } from '@/components/chat/ClarificationAnswers';
-import { WorkflowTimeline } from '@/components/chat/WorkflowTimeline';
+import { MessageBubble } from '@/components/chat/MessageBubble';
 import { DimViews } from '@/components/chat/DimViews';
 import { ParameterPanel } from '@/components/cad/ParameterPanel';
 import { ExportSection } from '@/components/cad/ExportSection';
@@ -37,7 +35,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [provider, setProvider] = useState('mimo-pro');
-  const [parameters, setParameters] = useState<Parameter[]>([]);
+  const [parameters, setParameters] = useState<Record<string, ParameterSchema>>({});
   const [currentCode, setCurrentCode] = useState('');
   const [stlUrl, setStlUrl] = useState<string | null>(null);
   const [stlObjectUrl, setStlObjectUrl] = useState<string | null>(null);
@@ -112,7 +110,7 @@ export default function App() {
     if (!activePrompt.trim() || isGenerating) return;
 
     const isClarificationContinue = !!overridePrompt;
-    const userMsg: Message = { role: 'user', content: activePrompt };
+    const userMsg: Message = { role: 'user', content: activePrompt, timestamp: Date.now() };
     if (!isClarificationContinue) {
       setMessages(prev => [...prev, userMsg]);
     }
@@ -151,7 +149,7 @@ export default function App() {
       // Add a placeholder assistant message that will accumulate steps during generation
       setMessages(prev => {
         assistantMessageIdRef.current = prev.length;
-        return [...prev, { role: 'assistant', content: '', provider, steps: [] }];
+        return [...prev, { role: 'assistant', content: '', provider, steps: [], timestamp: Date.now() }];
       });
 
       const updateSteps = (steps: WorkflowStep[]) => {
@@ -296,6 +294,7 @@ export default function App() {
           visionFeedback: visionFeedback || undefined,
           teeProof: finalData.teeProof,
           steps: liveSteps,
+          timestamp: Date.now(),
         };
         setMessages(prev => {
           const next = [...prev];
@@ -334,7 +333,7 @@ export default function App() {
       const errorMsg = e.message?.includes('Failed to fetch')
         ? 'Cannot connect to server. Make sure ai-server and cad-server are running.'
         : e.message;
-      const errorMsgObj: Message = { role: 'assistant', content: `Error: ${errorMsg}`, error: errorMsg };
+      const errorMsgObj: Message = { role: 'assistant', content: `Error: ${errorMsg}`, error: errorMsg, timestamp: Date.now() };
       setMessages(prev => {
         const next = [...prev];
         if (assistantMessageIdRef.current !== null && next[assistantMessageIdRef.current]) {
@@ -357,14 +356,14 @@ export default function App() {
     if (!lastUserMsg) return;
     setMessages(prev => [
       ...prev.filter(m => !m.clarification),
-      { role: 'user', content: answers, clarificationAnswers: answerList }
+      { role: 'user', content: answers, clarificationAnswers: answerList, timestamp: Date.now() }
     ]);
     handleGenerate(answers, lastUserMsg.content);
   }, [handleGenerate, messages]);
 
   const handleNewTask = () => {
     setMessages([]);
-    setParameters([]);
+    setParameters({});
     setCurrentCode('');
     setStlUrl(null);
     setStlBase64(undefined);
@@ -443,73 +442,26 @@ export default function App() {
                   }}
                   className="bg-adam-bg-secondary-dark"
                 >
-                  <div className="relative flex h-full min-w-0 flex-col border-r border-adam-neutral-700 bg-adam-bg-secondary-dark">
-                    <div className="flex items-center justify-between p-3 border-b border-adam-neutral-700">
-                      <span className="text-sm font-medium text-adam-text-primary">Chat</span>
+                  <div className="relative flex h-full min-w-0 flex-col border-r border-adam-neutral-700/40 bg-adam-bg-secondary-dark">
+                    {/* Chat header */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-adam-neutral-700/40 bg-gradient-to-b from-white/[0.02] to-transparent">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-1.5 h-1.5 rounded-full ${isGenerating ? 'bg-adam-blue animate-pulse' : 'bg-adam-neutral-600'}`} />
+                        <span className="text-sm font-semibold text-adam-text-primary">Chat</span>
+                      </div>
+                      <span className="text-[10px] text-adam-text-tertiary/70 tabular-nums">
+                        {messages.filter(m => !m.clarification).length} messages
+                      </span>
                     </div>
-                    <div ref={chatContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-3 pb-3 space-y-3">
+
+                    {/* Message list */}
+                    <div ref={chatContainerRef} onScroll={handleScroll} className="chat-scroll flex-1 overflow-y-auto px-3 py-3 space-y-2.5">
                       {messages.map((msg, i) => (
                         msg.clarification ? (
                           <ClarificationMessage key={i} questions={msg.clarification} onSubmit={handleClarificationSubmit} />
                         ) : (
                           (isGenerating && i === messages.length - 1 && msg.role === 'assistant' && !msg.content) ? null : (
-                          <div key={i} className={`rounded-xl p-3 text-sm ${msg.role === 'user' ? 'bg-adam-background-1' : msg.error ? 'bg-red-500/10' : 'bg-adam-background-1'}`}>
-                            <div className="text-[10px] text-adam-text-tertiary mb-1 font-medium">
-                              {msg.role === 'user' ? 'You' : msg.provider ? getProviderDisplayName(msg.provider) : 'Chamfer AI'}
-                            </div>
-                            {msg.clarificationAnswers && msg.clarificationAnswers.length > 0 ? (
-                              <ClarificationAnswers answers={msg.clarificationAnswers} />
-                            ) : (
-                              <div className="text-adam-text-primary leading-relaxed">{msg.content}</div>
-                            )}
-
-                            {/* Workflow Timeline */}
-                            {msg.steps && msg.steps.length > 0 && (
-                              <WorkflowTimeline steps={msg.steps} reasoning={msg.reasoning} />
-                            )}
-
-                            {/* Inline snapshots in chat */}
-                            {msg.snapshots && Object.keys(msg.snapshots).length > 0 && (
-                              <div className="mt-3 grid grid-cols-3 gap-1.5">
-                                {Object.entries(msg.snapshots).filter(([_, svg]) => svg && !svg.includes('error')).map(([view, svg]) => (
-                                  <div key={view} className="rounded-lg overflow-hidden border border-adam-neutral-700/50 bg-adam-bg-dark/50">
-                                    <div className="h-20 flex items-center justify-center" dangerouslySetInnerHTML={{ __html: svg }} />
-                                    <div className="text-center text-[8px] text-adam-text-tertiary py-0.5 uppercase tracking-wider">{view}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* Inline 2D dimensional views in chat */}
-                            {msg.dimViews && Object.keys(msg.dimViews).length > 0 && (
-                              <DimViews dimViews={msg.dimViews} />
-                            )}
-
-                            {/* Badges */}
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {msg.visionVerified && (
-                                <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-400/10 rounded-full px-2.5 py-1">
-                                  <Eye className="h-3 w-3" /> Vision-verified
-                                </span>
-                              )}
-                              {msg.teeProof && (
-                                <span className="inline-flex items-center gap-1.5 text-[10px] text-blue-400 bg-blue-400/10 rounded-full px-2.5 py-1">
-                                  🔒 TEE Verified (0x{msg.teeProof.signature.slice(0, 12)}...)
-                                </span>
-                              )}
-                              {msg.bestEffort && (
-                                <span className="inline-flex items-center gap-1.5 text-[10px] text-yellow-400 bg-yellow-400/10 rounded-full px-2.5 py-1">
-                                  Best effort
-                                </span>
-                              )}
-                            </div>
-
-                            {msg.warning && (
-                              <div className="mt-2 text-[10px] text-yellow-400 bg-yellow-500/10 rounded-md px-2 py-1.5">
-                                {msg.warning}
-                              </div>
-                            )}
-                          </div>
+                            <MessageBubble key={i} message={msg} />
                           )
                         )
                       ))}
@@ -523,7 +475,9 @@ export default function App() {
                       )}
                       <div ref={chatEndRef} />
                     </div>
-                    <div className="border-t border-adam-neutral-700 p-3">
+
+                    {/* Input dock */}
+                    <div className="border-t border-adam-neutral-700/40 p-3 bg-gradient-to-t from-white/[0.01] to-transparent">
                       <ChatInput
                         prompt={prompt} setPrompt={setPrompt} onSubmit={handleGenerate}
                         isGenerating={isGenerating} isFocused={isFocused} setIsFocused={setIsFocused}
@@ -601,10 +555,16 @@ export default function App() {
                   className="bg-adam-bg-secondary-dark"
                 >
                   <div className="flex h-full flex-col relative">
-                    <div className="flex items-center justify-between px-3 py-2 border-b border-adam-neutral-700">
-                      <span className="text-xs font-medium text-adam-text-tertiary uppercase tracking-wider">Inspect</span>
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-adam-neutral-700/40 bg-gradient-to-b from-white/[0.02] to-transparent">
+                      <span className="text-xs font-semibold text-adam-text-tertiary uppercase tracking-wider">Inspect</span>
+                      {inspection && (
+                        <div className="flex items-center gap-1.5">
+                          <div className={`w-1.5 h-1.5 rounded-full ${inspection.all_clear ? 'bg-emerald-400/60' : 'bg-yellow-400/60'}`} />
+                          <span className="text-[10px] text-adam-text-tertiary/70">{inspection.all_clear ? 'All clear' : 'Issues'}</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex-1 overflow-y-auto">
+                    <div className="chat-scroll flex-1 overflow-y-auto">
                       {/* Inspection */}
                       {inspection && <InspectionPanel inspection={inspection} />}
 
@@ -613,18 +573,18 @@ export default function App() {
 
                       {/* Dimensional Views */}
                       {Object.keys(dimViews).length > 0 && (
-                        <div className="p-4 border-b border-adam-neutral-700">
-                          <h3 className="text-xs font-semibold text-adam-text-tertiary uppercase tracking-wider mb-3">Dimensional Views</h3>
+                        <div className="p-4 border-b border-adam-neutral-700/40">
+                          <h3 className="text-xs font-semibold text-adam-text-tertiary/80 uppercase tracking-wider mb-3">Dimensional Views</h3>
                           <DimViews dimViews={dimViews} />
                         </div>
                       )}
 
                       {/* Parameters */}
-                      {parameters.length > 0 && (
-                        <div className="p-4 border-b border-adam-neutral-700">
+                      {Object.keys(parameters).length > 0 && (
+                        <div className="p-4 border-b border-adam-neutral-700/40">
                           <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-xs font-semibold text-adam-text-tertiary uppercase tracking-wider">Parameters</h3>
-                            <span className="text-[10px] text-adam-text-tertiary">{parameters.length} params</span>
+                            <h3 className="text-xs font-semibold text-adam-text-tertiary/80 uppercase tracking-wider">Parameters</h3>
+                            <span className="text-[10px] text-adam-text-tertiary/60 tabular-nums">{Object.keys(parameters).length} params</span>
                           </div>
                           <ParameterPanel parameters={parameters} values={paramValues} onChange={handleParamChange} />
                           {isParamUpdating && (
@@ -633,7 +593,7 @@ export default function App() {
                             </div>
                           )}
                           {paramError && (
-                            <div className="mt-2 text-[10px] text-red-400 bg-red-500/10 rounded-md px-2 py-1.5">
+                            <div className="mt-2 flex items-start gap-2 text-[11px] text-red-400/90 bg-red-500/[0.06] rounded-lg px-3 py-2 ring-1 ring-red-500/10">
                               {paramError}
                             </div>
                           )}
@@ -652,7 +612,7 @@ export default function App() {
                       {currentCode && <CodeSection code={currentCode} />}
 
                       {/* Empty State */}
-                      {parameters.length === 0 && !currentCode && (
+                      {Object.keys(parameters).length === 0 && !currentCode && (
                         <div className="flex-1 flex items-center justify-center p-6">
                           <div className="text-center">
                             <div className="w-10 h-10 rounded-full bg-adam-neutral-800 flex items-center justify-center mx-auto mb-3">

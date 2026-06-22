@@ -1,6 +1,7 @@
 import { ArrowUp, Brain } from 'lucide-react';
 import { AnimatedPlaceholder } from './AnimatedPlaceholder';
 import { ProviderSelector } from '@/components/layout/ProviderSelector';
+import { cn } from '@/lib/utils';
 
 interface ChatInputProps {
   prompt: string;
@@ -23,16 +24,17 @@ export function ChatInput({
   showAnimatedPlaceholder,
 }: ChatInputProps) {
   return (
-    <div className={`relative rounded-2xl border-2 transition-all duration-300 ${
+    <div className={cn(
+      'relative rounded-2xl border transition-all duration-300 bg-adam-background-2/80 backdrop-blur-sm',
       isFocused
-        ? 'border-adam-blue shadow-[inset_0px_0px_8px_0px_rgba(0,0,0,0.08)]'
-        : 'border-adam-neutral-700 shadow-[inset_0px_0px_8px_0px_rgba(0,0,0,0.08)] hover:border-adam-neutral-400'
-    } bg-adam-background-2`}>
+        ? 'border-adam-blue/60 shadow-[0_0_0_3px_rgba(0,166,255,0.08),inset_0_1px_0_rgba(255,255,255,0.03)]'
+        : 'border-adam-neutral-700/50 hover:border-adam-neutral-600/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]'
+    )}>
       {showAnimatedPlaceholder && !prompt && !isFocused && (
         <AnimatedPlaceholder visible />
       )}
       <textarea
-        className="w-full bg-transparent p-4 text-sm text-adam-text-primary resize-none outline-none placeholder:text-adam-text-tertiary"
+        className="w-full bg-transparent px-4 pt-3.5 pb-2 text-sm text-adam-text-primary resize-none outline-none placeholder:text-adam-text-tertiary/60"
         rows={3}
         placeholder={showAnimatedPlaceholder ? '' : placeholder}
         value={prompt}
@@ -41,18 +43,20 @@ export function ChatInput({
         onChange={e => setPrompt(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(); } }}
       />
-      <div className="flex items-center justify-between px-4 pb-3">
+      <div className="flex items-center justify-between px-3 pb-2.5">
         <div className="flex items-center gap-2 flex-1 max-w-[300px]">
           <ProviderSelector selected={provider} onSelect={setProvider} />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button
             onClick={() => setReasoningEnabled(!reasoningEnabled)}
-            className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] transition-all ${
+            className={cn(
+              'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all',
               reasoningEnabled
-                ? 'bg-adam-blue/20 text-adam-blue'
-                : 'bg-adam-neutral-800 text-adam-text-tertiary hover:bg-adam-neutral-700'
-            }`}
+                ? 'bg-adam-blue/15 text-adam-blue ring-1 ring-adam-blue/15'
+                : 'bg-adam-neutral-800/60 text-adam-text-tertiary hover:bg-adam-neutral-700/60 hover:text-adam-text-secondary'
+            )}
+            title={reasoningEnabled ? 'Reasoning mode — slower, more thorough' : 'Fast mode — quicker responses'}
           >
             <Brain className="h-3 w-3" />
             {reasoningEnabled ? 'Think' : 'Fast'}
@@ -60,9 +64,14 @@ export function ChatInput({
           <button
             onClick={() => onSubmit()}
             disabled={isGenerating || !prompt.trim()}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-adam-blue text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-adam-blue/80 transition-colors"
+            className={cn(
+              'flex h-8 w-8 items-center justify-center rounded-lg transition-all',
+              prompt.trim() && !isGenerating
+                ? 'bg-adam-blue text-white hover:bg-adam-blue/90 shadow-[0_2px_8px_rgba(0,166,255,0.25)]'
+                : 'bg-adam-neutral-800/60 text-adam-text-tertiary cursor-not-allowed'
+            )}
           >
-            <ArrowUp className="h-5 w-5" />
+            <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
           </button>
         </div>
       </div>

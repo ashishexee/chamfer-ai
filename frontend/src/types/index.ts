@@ -34,6 +34,7 @@ export interface WorkflowStep {
   label: string;
   detail: string;
   status?: 'running' | 'done' | 'error';
+  timestamp?: number;
 }
 
 export interface Message {
@@ -53,6 +54,7 @@ export interface Message {
   dimViews?: Record<string, string>;
   visionVerified?: boolean;
   visionFeedback?: string;
+  timestamp?: number;
 }
 
 export interface Provider {

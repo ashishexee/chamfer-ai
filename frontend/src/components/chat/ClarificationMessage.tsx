@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { HelpCircle, Check } from 'lucide-react';
+import { HelpCircle, Check, Sparkles } from 'lucide-react';
 import type { ClarificationOption } from '@/types';
+import { cn } from '@/lib/utils';
 
 interface ClarificationMessageProps {
   questions: ClarificationOption[];
@@ -33,19 +34,27 @@ export function ClarificationMessage({ questions, onSubmit }: ClarificationMessa
   };
 
   const handleAllDecide = () => {
-    setSelections(Object.fromEntries(questions.map(q => [q.key, '(let model decide)'])));
-    setCustomInputs({});
+    const answerList = questions.map(q => ({
+      question: q.question,
+      answer: '(let model decide)',
+    }));
+    const formatted = answerList.map(a => `Q: ${a.question}\nA: ${a.answer}`).join('\n');
+    onSubmit(formatted, answerList);
   };
 
   return (
-    <div className="rounded-xl p-4 text-sm bg-adam-background-1 border border-adam-blue/30">
-      <div className="text-[10px] text-adam-blue mb-3 font-medium flex items-center gap-1.5">
-        <HelpCircle className="h-3.5 w-3.5" /> Chamfer AI needs more details
+    <div className="rounded-xl border border-adam-blue/15 bg-gradient-to-br from-adam-blue/[0.04] via-[#1a1a1a]/40 to-transparent p-3.5">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex h-5 w-5 items-center justify-center rounded-md bg-adam-blue/15 text-adam-blue ring-1 ring-adam-blue/15">
+          <HelpCircle className="h-3 w-3" />
+        </div>
+        <span className="text-[11px] font-semibold text-adam-text-primary">Chamfer AI needs more details</span>
       </div>
-      <div className="space-y-4 mb-4">
+
+      <div className="space-y-3 mb-3">
         {questions.map((q, i) => (
           <div key={i}>
-            <label className="text-xs text-adam-text-secondary mb-2 block font-medium">
+            <label className="text-[10px] text-adam-text-secondary mb-1.5 block font-medium">
               {q.question}
             </label>
             {q.options && q.options.length > 0 ? (
@@ -56,13 +65,14 @@ export function ClarificationMessage({ questions, onSubmit }: ClarificationMessa
                     <button
                       key={j}
                       onClick={() => selectOption(q.key, opt)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                      className={cn(
+                        'px-2.5 py-1 rounded-md text-[11px] font-medium transition-all flex items-center gap-1',
                         isSelected
-                          ? 'bg-adam-blue text-white border border-adam-blue'
-                          : 'bg-adam-neutral-800 text-adam-text-secondary border border-adam-neutral-700 hover:bg-adam-neutral-700 hover:text-adam-text-primary'
-                      }`}
+                          ? 'bg-adam-blue text-white border border-adam-blue/80 shadow-[0_2px_6px_rgba(0,166,255,0.18)]'
+                          : 'bg-adam-neutral-800/40 text-adam-text-secondary border border-adam-neutral-700/30 hover:bg-adam-neutral-700/40 hover:text-adam-text-primary hover:border-adam-neutral-600/40'
+                      )}
                     >
-                      {isSelected && <Check className="h-3 w-3" />}
+                      {isSelected && <Check className="h-3 w-3" strokeWidth={3} />}
                       {opt}
                     </button>
                   );
@@ -72,7 +82,7 @@ export function ClarificationMessage({ questions, onSubmit }: ClarificationMessa
                   value={customInputs[q.key] || ''}
                   onChange={e => setCustom(q.key, e.target.value)}
                   placeholder="Custom..."
-                  className="w-24 border border-adam-neutral-700 rounded-lg px-2.5 py-1.5 text-xs bg-adam-bg-dark text-adam-text-primary outline-none focus:border-adam-blue placeholder:text-adam-text-tertiary"
+                  className="w-20 border border-adam-neutral-700/30 rounded-md px-2 py-1 text-[11px] bg-adam-bg-dark/40 text-adam-text-primary outline-none focus:border-adam-blue/50 focus:ring-1 focus:ring-adam-blue/10 placeholder:text-adam-text-tertiary/50 transition-all"
                 />
               </div>
             ) : (
@@ -83,23 +93,25 @@ export function ClarificationMessage({ questions, onSubmit }: ClarificationMessa
                 onKeyDown={e => { if (e.key === 'Enter' && i === questions.length - 1) handleSubmit(); }}
                 placeholder="Type your answer..."
                 autoFocus={i === 0}
-                className="w-full border border-adam-neutral-700 rounded-lg px-3 py-1.5 text-sm bg-adam-bg-dark text-adam-text-primary outline-none focus:border-adam-blue placeholder:text-adam-text-tertiary"
+                className="w-full border border-adam-neutral-700/30 rounded-md px-2.5 py-1.5 text-xs bg-adam-bg-dark/40 text-adam-text-primary outline-none focus:border-adam-blue/50 focus:ring-1 focus:ring-adam-blue/10 placeholder:text-adam-text-tertiary/50 transition-all"
               />
             )}
           </div>
         ))}
       </div>
+
       <div className="flex gap-2">
         <button
           onClick={handleAllDecide}
-          className="flex-1 rounded-lg border border-adam-neutral-700 px-3 py-2 text-xs text-adam-text-secondary hover:bg-adam-neutral-800 transition-colors"
+          className="flex-1 rounded-lg border border-adam-neutral-700/40 px-3 py-1.5 text-[11px] text-adam-text-secondary hover:bg-adam-neutral-800/50 hover:text-adam-text-primary transition-all"
         >
           Let model decide all
         </button>
         <button
           onClick={handleSubmit}
-          className="flex-1 rounded-lg bg-adam-blue px-3 py-2 text-xs text-white hover:bg-adam-blue/80 transition-colors font-medium"
+          className="flex-1 rounded-lg bg-adam-blue px-3 py-1.5 text-[11px] text-white hover:bg-adam-blue/90 font-medium transition-all shadow-[0_2px_8px_rgba(0,166,255,0.2)] flex items-center justify-center gap-1.5"
         >
+          <Sparkles className="h-3 w-3" />
           Generate
         </button>
       </div>

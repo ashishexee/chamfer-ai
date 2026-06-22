@@ -4,7 +4,7 @@ import { OrbitControls, ContactShadows } from "@react-three/drei";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { STLModel } from "@/components/cad/STLModel";
-import { AdaptiveGrid } from "@/components/cad/AdaptiveGrid";
+import { AxisLines } from "@/components/cad/AxisLines";
 import { ViewportHUD } from "@/components/cad/ViewportHUD";
 import { ProgressiveFluxLoader } from "@/components/ui/progressive-flux-loader";
 import { PARAM_PHASES } from "@/lib/constants";
@@ -68,7 +68,7 @@ export function PreviewPanel({
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const [axesVisible, setAxesVisible] = useState(true);
   const [activeView, setActiveView] = useState<ViewPresetId>("iso");
-  const boundsRef = useRef<THREE.Sphere | null>(null);
+  const [bounds, setBounds] = useState<THREE.Sphere | null>(null);
 
   const { animateTo, fitToView, resetCamera } = useViewPresets(
     cameraRef,
@@ -84,33 +84,35 @@ export function PreviewPanel({
     [],
   );
 
-  const handleBounds = useCallback((sphere: THREE.Sphere) => {
-    boundsRef.current = sphere;
-  }, []);
+  const handleBoundsReady = useCallback(
+    (sphere: THREE.Sphere) => {
+      setBounds(sphere);
+    },
+    [],
+  );
+
+  // Auto-fit camera once both refs and bounds are ready
+  useEffect(() => {
+    if (!stlUrl || !bounds || !controlsRef.current || !cameraRef.current || isParamUpdating) {
+      return;
+    }
+    const timeout = setTimeout(() => {
+      fitToView(bounds.radius);
+    }, 100);
+    return () => clearTimeout(timeout);
+  }, [stlUrl, bounds, isParamUpdating, fitToView]);
 
   const handleFit = useCallback(() => {
-    const r = boundsRef.current?.radius ?? 30;
+    const r = bounds?.radius ?? 30;
     fitToView(r);
-  }, [fitToView]);
-
-  // Auto-fit camera when model loads (only on initial load, not on every update)
-  useEffect(() => {
-    if (stlUrl && boundsRef.current && controlsRef.current) {
-      const radius = boundsRef.current.radius;
-      // Small delay to ensure the model has settled
-      const timeout = setTimeout(() => {
-        fitToView(radius);
-      }, 100);
-      return () => clearTimeout(timeout);
-    }
-  }, [stlUrl, fitToView]);
+  }, [fitToView, bounds]);
 
   return (
     <div className="flex-1 flex h-full w-full items-center justify-center bg-[#1C1C1C] relative overflow-hidden">
       {/* Content layer — hidden when collapsed */}
       <div className={cn("absolute inset-0", isCollapsed && "invisible")}>
         <Canvas
-          key={stlUrl || "no-model"} // remounts on every new model
+          key="main-canvas"
           camera={{ position: [30, 30, 30], fov: 30 }}
           gl={{ preserveDrawingBuffer: true, antialias: true }}
           shadows
@@ -132,27 +134,27 @@ export function PreviewPanel({
           <directionalLight position={[-50, 30, -40]} intensity={0.5} />
           <directionalLight position={[0, -20, -30]} intensity={0.15} />
 
-          {axesVisible && <AdaptiveGrid />}
+          {axesVisible && <AxisLines />}
           {stlUrl && (
             <STLModel
               key={`${stlUrl}-${paramUpdateKey}`}
               url={stlUrl}
               updating={isParamUpdating}
-              onBoundsReady={handleBounds}
+              onBoundsReady={handleBoundsReady}
             />
           )}
-          {stlUrl && axesVisible && (
+          {stlUrl && axesVisible && bounds && (
             <ContactShadows
               position={[0, -0.001, 0]}
               opacity={0.55}
-              scale={boundsRef.current ? boundsRef.current.radius * 3.5 : 200}
+              scale={bounds.radius * 3.5}
               blur={2.2}
-              far={boundsRef.current ? boundsRef.current.radius * 1.5 : 60}
+              far={bounds.radius * 1.5}
               resolution={256}
               color="#000000"
             />
           )}
-          <OrbitControls enableDamping dampingFactor={0.1} makeDefault />
+          <OrbitControls enableDamping dampingFactor={0.1} zoomSpeed={0.4} makeDefault />
         </Canvas>
 
         <div className="absolute inset-0 vignette" />

@@ -87,7 +87,7 @@ export function useViewPresets(
 
     cancel();
 
-    const targetDistance = Math.max(boundingRadius * 2.6, 40);
+    const targetDistance = Math.max(boundingRadius * 4.5, 60);
     const dir = camera.position.clone().sub(controls.target).normalize();
     if (dir.lengthSq() < 1e-6) dir.set(1, 1, 1).normalize();
 
