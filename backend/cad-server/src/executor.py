@@ -15,6 +15,22 @@ _IMAGE = "vibecad-cad-executor"
 _EXECUTION_TIMEOUT = 30
 
 
+def _get_venv_python() -> str:
+    """Find the .venv Python next to this file or in parent dirs."""
+    here = Path(__file__).resolve().parent
+    for d in [here, *here.parents]:
+        venv = d / ".venv"
+        if venv.is_dir():
+            for name in ("python.exe", "python"):
+                exe = venv / ("Scripts" if os.name == "nt" else "bin") / name
+                if exe.exists():
+                    return str(exe)
+    return sys.executable
+
+
+_VENV_PYTHON = _get_venv_python()
+
+
 def execute_cadquery(
     code: str,
     params: dict | None = None,

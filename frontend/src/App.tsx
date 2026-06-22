@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { PanelLeft, Eye } from 'lucide-react';
+import { Eye, PanelLeftClose, PanelRightClose, PanelLeftOpen, PanelRightOpen } from 'lucide-react';
+import type { PanelImperativeHandle } from 'react-resizable-panels';
 import type { Parameter, Message, InspectionData, ClarificationOption, WorkflowStep } from '@/types';
 import { API_URL } from '@/lib/constants';
-
 // Components
 import { Sidebar } from '@/components/layout/Sidebar';
 import { PreviewPanel } from '@/components/layout/PreviewPanel';
@@ -20,6 +20,8 @@ import { InspectionPanel } from '@/components/cad/InspectionPanel';
 import { LampContainer } from '@/components/ui/lamp';
 import { GlowCard } from '@/components/ui/spotlight-card';
 import { ProgressiveFluxLoader } from '@/components/ui/progressive-flux-loader';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
+import { cn } from '@/lib/utils';
 
 // Hooks
 import { useAutoScroll } from '@/hooks/useAutoScroll';
@@ -48,6 +50,26 @@ export default function App() {
   const [snapshots, setSnapshots] = useState<Record<string, string>>({});
   const [dimViews, setDimViews] = useState<Record<string, string>>({});
   const [inspection, setInspection] = useState<InspectionData | null>(null);
+  const [collapsed, setCollapsed] = useState({ chat: false, preview: false, right: true });
+  const [panelAnimating, setPanelAnimating] = useState(false);
+
+  // Refs for collapsible panels
+  const chatPanelRef = useRef<PanelImperativeHandle | null>(null);
+  const previewPanelRef = useRef<PanelImperativeHandle | null>(null);
+  const rightPanelRef = useRef<PanelImperativeHandle | null>(null);
+
+  const togglePanel = useCallback((key: 'chat' | 'preview' | 'right', ref: React.RefObject<PanelImperativeHandle | null>) => {
+    const panel = ref.current;
+    if (!panel) return;
+    const willCollapse = !panel.isCollapsed();
+    setCollapsed(c => ({ ...c, [key]: willCollapse }));
+    setPanelAnimating(true);
+    window.requestAnimationFrame(() => {
+      if (willCollapse) panel.collapse();
+      else panel.expand();
+    });
+    window.setTimeout(() => setPanelAnimating(false), 700);
+  }, []);
 
   // Refs for streaming
   const reasoningBufferRef = useRef('');
@@ -352,19 +374,15 @@ export default function App() {
   // ── Render ──
   return (
     <div className="flex h-dvh overflow-hidden">
-      <Sidebar isOpen={sidebarOpen} onNewTask={handleNewTask} />
+      <Sidebar
+        isOpen={sidebarOpen}
+        onNewTask={handleNewTask}
+        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+      />
 
       <div className="relative flex-1 overflow-auto bg-adam-bg-dark">
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="bg-adam-neutral-800 fixed z-10 h-7 w-7 rounded-md text-adam-text-secondary hover:bg-adam-neutral-700 hover:text-adam-text-primary transition-[left] duration-300 ease-in-out"
-          style={{ left: sidebarOpen ? '272px' : '80px', top: '14px' }}
-        >
-          <PanelLeft className="h-4 w-4 mx-auto" />
-        </button>
-
         <div className={`h-full bg-adam-bg-dark ${sidebarOpen ? 'p-6' : 'p-0'}`}>
-          <div className="h-full bg-adam-bg-secondary-dark rounded-xl overflow-hidden flex">
+          <div className="h-full bg-adam-bg-secondary-dark rounded-xl overflow-hidden flex relative">
 
             {!hasModel ? (
               /* ─── Landing ─── */
@@ -395,12 +413,27 @@ export default function App() {
               </LampContainer>
             ) : (
               /* ─── Editor ─── */
-              <div className="flex h-full w-full">
+              <>
+              <ResizablePanelGroup direction="horizontal" autoSaveId="vibecad-editor-v3" className={cn('h-full w-full', panelAnimating && 'panel-animated')}>
 
                 {/* Chat Panel */}
-                <div className="flex h-full w-[30%] min-w-[384px] max-w-[550px] flex-col border-r border-adam-neutral-700 bg-adam-bg-secondary-dark shrink-0">
+                <ResizablePanel
+                  panelRef={chatPanelRef}
+                  collapsible
+                  collapsedSize={0}
+                  minSize={20}
+                  maxSize={500}
+                  defaultSize={30}
+                  order={1}
+                  onResize={size => {
+                    if (panelAnimating) return;
+                    if (size.asPercentage < 0.5) setCollapsed(c => c.chat ? c : { ...c, chat: true });
+                    else if (size.asPercentage > 1) setCollapsed(c => !c.chat ? c : { ...c, chat: false });
+                  }}
+                  className="bg-adam-bg-secondary-dark"
+                >
                   <div className="relative flex h-full min-w-0 flex-col border-r border-adam-neutral-700 bg-adam-bg-secondary-dark">
-                    <div className="flex items-center justify-between p-3">
+                    <div className="flex items-center justify-between p-3 border-b border-adam-neutral-700">
                       <span className="text-sm font-medium text-adam-text-primary">Chat</span>
                     </div>
                     <div ref={chatContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-3 pb-3 space-y-3">
@@ -484,81 +517,143 @@ export default function App() {
                       />
                     </div>
                   </div>
-                </div>
+                </ResizablePanel>
+
+                <ResizableHandle>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePanel('chat', chatPanelRef);
+                    }}
+                    title={collapsed.chat ? 'Show chat' : 'Hide chat'}
+                    className="absolute top-1/2 left-full -translate-y-1/2 h-7 w-7 glass-hud rounded-md flex items-center justify-center text-adam-text-secondary hover:text-adam-blue hover:bg-adam-blue/15 transition-colors pointer-events-auto cursor-pointer outline-none"
+                  >
+                    {collapsed.chat ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                  </button>
+                </ResizableHandle>
 
                 {/* Preview Panel */}
-                <PreviewPanel
-                  stlUrl={stlUrl}
-                  paramUpdateKey={paramUpdateKey}
-                  isParamUpdating={isParamUpdating}
-                  provider={provider}
-                />
+                <ResizablePanel
+                  panelRef={previewPanelRef}
+                  collapsible
+                  collapsedSize={0}
+                  minSize={30}
+                  defaultSize={45}
+                  order={2}
+                  onResize={size => {
+                    if (panelAnimating) return;
+                    if (size.asPercentage < 0.5) setCollapsed(c => c.preview ? c : { ...c, preview: true });
+                    else if (size.asPercentage > 1) setCollapsed(c => !c.preview ? c : { ...c, preview: false });
+                  }}
+                >
+                  <PreviewPanel
+                    stlUrl={stlUrl}
+                    paramUpdateKey={paramUpdateKey}
+                    isParamUpdating={isParamUpdating}
+                    provider={provider}
+                    isCollapsed={collapsed.preview}
+                  />
+                </ResizablePanel>
+
+                <ResizableHandle>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePanel('right', rightPanelRef);
+                    }}
+                    title={collapsed.right ? 'Show inspect' : 'Hide inspect'}
+                    className="absolute top-1/2 left-0 -translate-x-full -translate-y-1/2 h-7 w-7 glass-hud rounded-md flex items-center justify-center text-adam-text-secondary hover:text-adam-blue hover:bg-adam-blue/15 transition-colors pointer-events-auto cursor-pointer outline-none"
+                  >
+                    {collapsed.right ? <PanelRightOpen className="h-4 w-4" /> : <PanelRightClose className="h-4 w-4" />}
+                  </button>
+                </ResizableHandle>
 
                 {/* Right Panel */}
-                <div className="flex h-full w-[320px] max-w-[384px] shrink-0 flex-col overflow-y-auto bg-adam-bg-secondary-dark border-l border-adam-neutral-700">
-
-                  {/* Inspection */}
-                  {inspection && <InspectionPanel inspection={inspection} />}
-
-                  {/* Snapshots */}
-                  {Object.keys(snapshots).length > 0 && <SnapshotGallery snapshots={snapshots} />}
-
-                  {/* Dimensional Views */}
-                  {Object.keys(dimViews).length > 0 && (
-                    <div className="p-4 border-b border-adam-neutral-700">
-                      <h3 className="text-xs font-semibold text-adam-text-tertiary uppercase tracking-wider mb-3">Dimensional Views</h3>
-                      <DimViews dimViews={dimViews} />
+                <ResizablePanel
+                  panelRef={rightPanelRef}
+                  collapsible
+                  collapsedSize={0}
+                  minSize={18}
+                  defaultSize={0}
+                  maxSize={350}
+                  order={3}
+                  onResize={size => {
+                    if (panelAnimating) return;
+                    if (size.asPercentage < 0.5) setCollapsed(c => c.right ? c : { ...c, right: true });
+                    else if (size.asPercentage > 1) setCollapsed(c => !c.right ? c : { ...c, right: false });
+                  }}
+                  className="bg-adam-bg-secondary-dark"
+                >
+                  <div className="flex h-full flex-col relative">
+                    <div className="flex items-center justify-between px-3 py-2 border-b border-adam-neutral-700">
+                      <span className="text-xs font-medium text-adam-text-tertiary uppercase tracking-wider">Inspect</span>
                     </div>
-                  )}
+                    <div className="flex-1 overflow-y-auto">
+                      {/* Inspection */}
+                      {inspection && <InspectionPanel inspection={inspection} />}
 
-                  {/* Parameters */}
-                  {parameters.length > 0 && (
-                    <div className="p-4 border-b border-adam-neutral-700">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-xs font-semibold text-adam-text-tertiary uppercase tracking-wider">Parameters</h3>
-                        <span className="text-[10px] text-adam-text-tertiary">{parameters.length} params</span>
-                      </div>
-                      <ParameterPanel parameters={parameters} values={paramValues} onChange={handleParamChange} />
-                      {isParamUpdating && (
-                        <div className="mt-3">
-                          <ProgressiveFluxLoader phases={PARAM_PHASES} showLabel={false} barClassName="h-1.5" className="gap-0" />
+                      {/* Snapshots */}
+                      {Object.keys(snapshots).length > 0 && <SnapshotGallery snapshots={snapshots} />}
+
+                      {/* Dimensional Views */}
+                      {Object.keys(dimViews).length > 0 && (
+                        <div className="p-4 border-b border-adam-neutral-700">
+                          <h3 className="text-xs font-semibold text-adam-text-tertiary uppercase tracking-wider mb-3">Dimensional Views</h3>
+                          <DimViews dimViews={dimViews} />
                         </div>
                       )}
-                      {paramError && (
-                        <div className="mt-2 text-[10px] text-red-400 bg-red-500/10 rounded-md px-2 py-1.5">
-                          {paramError}
+
+                      {/* Parameters */}
+                      {parameters.length > 0 && (
+                        <div className="p-4 border-b border-adam-neutral-700">
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-xs font-semibold text-adam-text-tertiary uppercase tracking-wider">Parameters</h3>
+                            <span className="text-[10px] text-adam-text-tertiary">{parameters.length} params</span>
+                          </div>
+                          <ParameterPanel parameters={parameters} values={paramValues} onChange={handleParamChange} />
+                          {isParamUpdating && (
+                            <div className="mt-3">
+                              <ProgressiveFluxLoader phases={PARAM_PHASES} showLabel={false} barClassName="h-1.5" className="gap-0" />
+                            </div>
+                          )}
+                          {paramError && (
+                            <div className="mt-2 text-[10px] text-red-400 bg-red-500/10 rounded-md px-2 py-1.5">
+                              {paramError}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Export */}
+                      <ExportSection
+                        stlBase64={stlBase64}
+                        stepBase64={stepBase64}
+                        exportFilename={exportFilename}
+                        setExportFilename={setExportFilename}
+                      />
+
+                      {/* Code */}
+                      {currentCode && <CodeSection code={currentCode} />}
+
+                      {/* Empty State */}
+                      {parameters.length === 0 && !currentCode && (
+                        <div className="flex-1 flex items-center justify-center p-6">
+                          <div className="text-center">
+                            <div className="w-10 h-10 rounded-full bg-adam-neutral-800 flex items-center justify-center mx-auto mb-3">
+                              <svg className="w-5 h-5 text-adam-text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714a2.25 2.25 0 0 0 .659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M19 14.5l-2.47 2.47a2.25 2.25 0 0 1-1.59.659H9.06a2.25 2.25 0 0 1-1.591-.659L5 14.5m14 0V17a2.25 2.25 0 0 1-2.25 2.25H7.25A2.25 2.25 0 0 1 5 17v-2.5" />
+                              </svg>
+                            </div>
+                            <p className="text-xs text-adam-text-tertiary">Generate a model to see parameters and code</p>
+                          </div>
                         </div>
                       )}
                     </div>
-                  )}
+                  </div>
+                </ResizablePanel>
 
-                  {/* Export */}
-                  <ExportSection
-                    stlBase64={stlBase64}
-                    stepBase64={stepBase64}
-                    exportFilename={exportFilename}
-                    setExportFilename={setExportFilename}
-                  />
-
-                  {/* Code */}
-                  {currentCode && <CodeSection code={currentCode} />}
-
-                  {/* Empty State */}
-                  {parameters.length === 0 && !currentCode && (
-                    <div className="flex-1 flex items-center justify-center p-6">
-                      <div className="text-center">
-                        <div className="w-10 h-10 rounded-full bg-adam-neutral-800 flex items-center justify-center mx-auto mb-3">
-                          <svg className="w-5 h-5 text-adam-text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714a2.25 2.25 0 0 0 .659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M19 14.5l-2.47 2.47a2.25 2.25 0 0 1-1.59.659H9.06a2.25 2.25 0 0 1-1.591-.659L5 14.5m14 0V17a2.25 2.25 0 0 1-2.25 2.25H7.25A2.25 2.25 0 0 1 5 17v-2.5" />
-                          </svg>
-                        </div>
-                        <p className="text-xs text-adam-text-tertiary">Generate a model to see parameters and code</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-              </div>
+              </ResizablePanelGroup>
+              </>
             )}
           </div>
         </div>

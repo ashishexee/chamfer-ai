@@ -1,28 +1,48 @@
-import { Plus } from 'lucide-react';
+import { Plus, PanelLeft, PanelLeftClose } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
   onNewTask: () => void;
+  onToggleSidebar?: () => void;
 }
 
-export function Sidebar({ isOpen, onNewTask }: SidebarProps) {
+export function Sidebar({ isOpen, onNewTask, onToggleSidebar }: SidebarProps) {
   return (
     <div className={`${isOpen ? 'w-64' : 'w-16'} flex h-full flex-shrink-0 flex-col bg-adam-bg-dark transition-all duration-300 ease-in-out`}>
-      <div className="p-4">
-        <button className="flex w-full items-center" onClick={onNewTask}>
-          <span className="text-lg font-bold text-adam-text-primary tracking-tight">
-            {isOpen ? 'VibeCAD' : 'V'}
-          </span>
-        </button>
+      <div className="p-4 flex items-center justify-between">
+        {isOpen ? (
+          <>
+            <button className="flex items-center" onClick={onNewTask}>
+              <span className="text-lg font-bold text-adam-text-primary tracking-tight">
+                VibeCAD
+              </span>
+            </button>
+            <button
+              onClick={onToggleSidebar}
+              title="Collapse sidebar"
+              className="h-7 w-7 flex items-center justify-center rounded-md text-adam-text-tertiary hover:text-adam-text-primary hover:bg-adam-neutral-800 transition-colors"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={onToggleSidebar}
+            title="Expand sidebar"
+            className="h-7 w-7 flex items-center justify-center rounded-md text-adam-text-tertiary hover:text-adam-text-primary hover:bg-adam-neutral-800 transition-colors"
+          >
+            <PanelLeft className="h-4 w-4" />
+          </button>
+        )}
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
         <div className={`${isOpen ? 'px-4' : 'px-2'} py-2`}>
-          <div className={isOpen ? 'ml-[9px]' : 'ml-0'}>
+          <div className={isOpen ? 'ml-[9px]' : 'flex justify-center'}>
             <button
               onClick={onNewTask}
               className={`${isOpen
                 ? 'flex w-[216px] items-center justify-start gap-2 rounded-full border border-adam-blue bg-adam-background-1 px-4 py-3 text-adam-neutral-200 hover:bg-adam-blue/40 hover:text-adam-text-primary'
-                : 'flex h-[30px] w-[30px] items-center justify-center rounded-lg border-2 border-adam-blue bg-adam-bg-dark p-[2px] text-adam-neutral-200 shadow-adam hover:bg-adam-blue/40'
+                : 'flex h-[32px] w-[32px] items-center justify-center rounded-lg bg-adam-neutral-800 text-adam-text-secondary hover:bg-adam-neutral-700 hover:text-adam-text-primary'
               } mb-4 transition-colors`}
             >
               <Plus className="h-5 w-5" />

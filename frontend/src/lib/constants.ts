@@ -36,3 +36,28 @@ export const PARAM_PHASES = [
   { at: 75, label: 'generating mesh' },
   { at: 100, label: 'complete' },
 ];
+
+export type ViewPresetId =
+  | 'iso'
+  | 'top'
+  | 'bottom'
+  | 'front'
+  | 'back'
+  | 'left'
+  | 'right';
+
+export interface ViewPreset {
+  id: ViewPresetId;
+  label: string;
+  position: [number, number, number];
+}
+
+export const VIEW_PRESETS: ViewPreset[] = [
+  { id: 'iso',   label: 'Iso',   position: [80, 80, 80] },
+  { id: 'top',   label: 'Top',   position: [0, 120, 0.001] },
+  { id: 'bottom',label: 'Bot',   position: [0, -120, 0.001] },
+  { id: 'front', label: 'Front', position: [0, 0, 120] },
+  { id: 'back',  label: 'Back',  position: [0, 0, -120] },
+  { id: 'left',  label: 'Left',  position: [-120, 0, 0.001] },
+  { id: 'right', label: 'Right', position: [120, 0, 0.001] },
+];
