@@ -38,7 +38,7 @@ export function LandingPage({ onStart }: LandingPageProps) {
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2">
             <Logo showWordmark={false} size={28} />
-            <span className="font-display font-bold text-vibe-ink text-sm">VibeCAD</span>
+            <span className="font-display font-bold text-vibe-ink text-sm">Chamfer AI</span>
           </div>
           <p className="text-xs text-vibe-muted text-center md:text-left">
             Open-source parametric CAD. Built with CadQuery, OpenCASCADE, React, and Three.js.

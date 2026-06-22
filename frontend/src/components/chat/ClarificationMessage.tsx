@@ -40,7 +40,7 @@ export function ClarificationMessage({ questions, onSubmit }: ClarificationMessa
   return (
     <div className="rounded-xl p-4 text-sm bg-adam-background-1 border border-adam-blue/30">
       <div className="text-[10px] text-adam-blue mb-3 font-medium flex items-center gap-1.5">
-        <HelpCircle className="h-3.5 w-3.5" /> VibeCAD needs more details
+        <HelpCircle className="h-3.5 w-3.5" /> Chamfer AI needs more details
       </div>
       <div className="space-y-4 mb-4">
         {questions.map((q, i) => (

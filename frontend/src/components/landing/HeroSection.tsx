@@ -52,7 +52,7 @@ export function HeroSection({ onStart, initialPrompt = '' }: HeroSectionProps) {
 
         {/* Subheadline */}
         <p className={`text-lg md:text-xl text-vibe-slate max-w-2xl mx-auto mb-10 leading-relaxed transition-all duration-700 delay-200 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
-          Type a part. VibeCAD generates CadQuery Python, runs it on a real OpenCASCADE B-rep kernel, and gives you a manufacturable 3D model — STEP, STL, and GLB.
+          Type a part. Chamfer AI generates CadQuery Python, runs it on a real OpenCASCADE B-rep kernel, and gives you a manufacturable 3D model — STEP, STL, and GLB.
         </p>
 
         {/* Input card */}

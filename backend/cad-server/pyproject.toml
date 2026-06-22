@@ -1,5 +1,5 @@
 [project]
-name = "vibecad-cad-server"
+name = "chamfer-ai-cad-server"
 version = "0.3.0"
 requires-python = ">=3.12"
 dependencies = [

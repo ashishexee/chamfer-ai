@@ -131,9 +131,9 @@ export const zIndex = {
 };
 
 export const brand = {
-  name: 'VibeCAD',
+  name: 'Chamfer AI',
   tagline: 'CAD by description.',
-  description: 'Describe a part in plain language. VibeCAD generates CadQuery Python, runs it on a real OpenCASCADE B-rep kernel, and gives you a manufacturable 3D model.',
+  description: 'Describe a part in plain language. Chamfer AI generates CadQuery Python, runs it on a real OpenCASCADE B-rep kernel, and gives you a manufacturable 3D model.',
   cta: 'Start designing',
   examples: [
     'a 12-tooth spur gear',

@@ -25,7 +25,7 @@ export function Sidebar({ isOpen, onNewTask, onToggleSidebar }: SidebarProps) {
           <>
             <button className="flex items-center" onClick={onNewTask}>
               <span className="text-lg font-bold text-adam-text-primary tracking-tight">
-                VibeCAD
+                Chamfer AI
               </span>
             </button>
             <button

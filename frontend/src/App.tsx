@@ -399,7 +399,7 @@ export default function App() {
               /* ─── Landing ─── */
               <LampContainer className="flex-1 min-h-0">
                 <h1 className="mb-8 text-center text-2xl font-medium text-adam-text-primary md:text-3xl">
-                  What can VibeCAD help you build today?
+                  What can Chamfer AI help you build today?
                 </h1>
                 <GlowCard glowColor="blue" customSize className="w-full max-w-2xl">
                   <div className="space-y-4">
@@ -407,7 +407,7 @@ export default function App() {
                       prompt={prompt} setPrompt={setPrompt} onSubmit={handleGenerate}
                       isGenerating={isGenerating} isFocused={isFocused} setIsFocused={setIsFocused}
                       provider={provider} setProvider={setProvider}
-                      placeholder="Start building with VibeCAD..."
+                      placeholder="Start building with Chamfer AI..."
                       reasoningEnabled={reasoningEnabled} setReasoningEnabled={setReasoningEnabled}
                       showAnimatedPlaceholder
                     />
@@ -425,7 +425,7 @@ export default function App() {
             ) : (
               /* ─── Editor ─── */
               <>
-              <ResizablePanelGroup direction="horizontal" autoSaveId="vibecad-editor-v3" className={cn('h-full w-full', panelAnimating && 'panel-animated')}>
+              <ResizablePanelGroup direction="horizontal" autoSaveId="chamfer-ai-editor-v3" className={cn('h-full w-full', panelAnimating && 'panel-animated')}>
 
                 {/* Chat Panel */}
                 <ResizablePanel
@@ -455,7 +455,7 @@ export default function App() {
                           (isGenerating && i === messages.length - 1 && msg.role === 'assistant' && !msg.content) ? null : (
                           <div key={i} className={`rounded-xl p-3 text-sm ${msg.role === 'user' ? 'bg-adam-background-1' : msg.error ? 'bg-red-500/10' : 'bg-adam-background-1'}`}>
                             <div className="text-[10px] text-adam-text-tertiary mb-1 font-medium">
-                              {msg.role === 'user' ? 'You' : msg.provider ? getProviderDisplayName(msg.provider) : 'VibeCAD'}
+                              {msg.role === 'user' ? 'You' : msg.provider ? getProviderDisplayName(msg.provider) : 'Chamfer AI'}
                             </div>
                             {msg.clarificationAnswers && msg.clarificationAnswers.length > 0 ? (
                               <ClarificationAnswers answers={msg.clarificationAnswers} />
