@@ -1,0 +1,36 @@
+services:
+  cad-server:
+    build:
+      context: ./cad-server/server
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - cad-work:/shared
+    environment:
+      - CAD_WORK_VOLUME=${COMPOSE_PROJECT_NAME}_cad-work
+    restart: unless-stopped
+
+  executor:
+    build:
+      context: ./cad-server/executor
+      dockerfile: Dockerfile
+    image: chamfer-ai-cad-executor
+
+  ai-server:
+    build:
+      context: ./ai-server
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    env_file:
+      - ./ai-server/.env
+    environment:
+      - CAD_SERVER_URL=http://cad-server:5000
+    depends_on:
+      - cad-server
+    restart: unless-stopped
+
+volumes:
+  cad-work:
