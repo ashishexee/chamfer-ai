@@ -32,7 +32,6 @@ def _get_work_dir() -> Path:
     import tempfile
     return Path(tempfile.mkdtemp(prefix="chamfer_ai_"))
 
-
 def execute_cadquery(
     code: str,
     params: dict | None = None,

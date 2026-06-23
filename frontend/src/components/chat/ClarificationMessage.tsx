@@ -6,9 +6,10 @@ import { cn } from '@/lib/utils';
 interface ClarificationMessageProps {
   questions: ClarificationOption[];
   onSubmit: (answers: string, answerList: { question: string; answer: string }[]) => void;
+  isGenerating?: boolean;
 }
 
-export function ClarificationMessage({ questions, onSubmit }: ClarificationMessageProps) {
+export function ClarificationMessage({ questions, onSubmit, isGenerating }: ClarificationMessageProps) {
   const [selections, setSelections] = useState<Record<string, string>>(
     Object.fromEntries(questions.map(q => [q.key, q.default || '']))
   );
@@ -65,11 +66,13 @@ export function ClarificationMessage({ questions, onSubmit }: ClarificationMessa
                     <button
                       key={j}
                       onClick={() => selectOption(q.key, opt)}
+                      disabled={isGenerating}
                       className={cn(
                         'px-2.5 py-1 rounded-md text-[11px] font-medium transition-all flex items-center gap-1',
                         isSelected
                           ? 'bg-adam-blue text-white border border-adam-blue/80 shadow-[0_2px_6px_rgba(0,166,255,0.18)]'
-                          : 'bg-adam-neutral-800/40 text-adam-text-secondary border border-adam-neutral-700/30 hover:bg-adam-neutral-700/40 hover:text-adam-text-primary hover:border-adam-neutral-600/40'
+                          : 'bg-adam-neutral-800/40 text-adam-text-secondary border border-adam-neutral-700/30 hover:bg-adam-neutral-700/40 hover:text-adam-text-primary hover:border-adam-neutral-600/40',
+                        isGenerating && 'opacity-50 cursor-not-allowed'
                       )}
                     >
                       {isSelected && <Check className="h-3 w-3" strokeWidth={3} />}
@@ -81,8 +84,8 @@ export function ClarificationMessage({ questions, onSubmit }: ClarificationMessa
                   type="text"
                   value={customInputs[q.key] || ''}
                   onChange={e => setCustom(q.key, e.target.value)}
-                  placeholder="Custom..."
-                  className="w-20 border border-adam-neutral-700/30 rounded-md px-2 py-1 text-[11px] bg-adam-bg-dark/40 text-adam-text-primary outline-none focus:border-adam-blue/50 focus:ring-1 focus:ring-adam-blue/10 placeholder:text-adam-text-tertiary/50 transition-all"
+                  disabled={isGenerating}
+                  className="w-20 border border-adam-neutral-700/30 rounded-md px-2 py-1 text-[11px] bg-adam-bg-dark/40 text-adam-text-primary outline-none focus:border-adam-blue/50 focus:ring-1 focus:ring-adam-blue/10 placeholder:text-adam-text-tertiary/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
             ) : (
@@ -90,10 +93,11 @@ export function ClarificationMessage({ questions, onSubmit }: ClarificationMessa
                 type="text"
                 value={selections[q.key] || ''}
                 onChange={e => setSelections(prev => ({ ...prev, [q.key]: e.target.value }))}
-                onKeyDown={e => { if (e.key === 'Enter' && i === questions.length - 1) handleSubmit(); }}
+                onKeyDown={e => { if (e.key === 'Enter' && i === questions.length - 1 && !isGenerating) handleSubmit(); }}
+                disabled={isGenerating}
                 placeholder="Type your answer..."
                 autoFocus={i === 0}
-                className="w-full border border-adam-neutral-700/30 rounded-md px-2.5 py-1.5 text-xs bg-adam-bg-dark/40 text-adam-text-primary outline-none focus:border-adam-blue/50 focus:ring-1 focus:ring-adam-blue/10 placeholder:text-adam-text-tertiary/50 transition-all"
+                className="w-full border border-adam-neutral-700/30 rounded-md px-2.5 py-1.5 text-xs bg-adam-bg-dark/40 text-adam-text-primary outline-none focus:border-adam-blue/50 focus:ring-1 focus:ring-adam-blue/10 placeholder:text-adam-text-tertiary/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               />
             )}
           </div>
@@ -103,16 +107,18 @@ export function ClarificationMessage({ questions, onSubmit }: ClarificationMessa
       <div className="flex gap-2">
         <button
           onClick={handleAllDecide}
-          className="flex-1 rounded-lg border border-adam-neutral-700/40 px-3 py-1.5 text-[11px] text-adam-text-secondary hover:bg-adam-neutral-800/50 hover:text-adam-text-primary transition-all"
+          disabled={isGenerating}
+          className="flex-1 rounded-lg border border-adam-neutral-700/40 px-3 py-1.5 text-[11px] text-adam-text-secondary hover:bg-adam-neutral-800/50 hover:text-adam-text-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Let model decide all
         </button>
         <button
           onClick={handleSubmit}
-          className="flex-1 rounded-lg bg-adam-blue px-3 py-1.5 text-[11px] text-white hover:bg-adam-blue/90 font-medium transition-all shadow-[0_2px_8px_rgba(0,166,255,0.2)] flex items-center justify-center gap-1.5"
+          disabled={isGenerating}
+          className="flex-1 rounded-lg bg-adam-blue px-3 py-1.5 text-[11px] text-white hover:bg-adam-blue/90 font-medium transition-all shadow-[0_2px_8px_rgba(0,166,255,0.2)] flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Sparkles className="h-3 w-3" />
-          Generate
+          {isGenerating ? 'Generating...' : 'Generate'}
         </button>
       </div>
     </div>

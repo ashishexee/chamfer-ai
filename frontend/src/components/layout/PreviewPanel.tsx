@@ -122,7 +122,7 @@ export function PreviewPanel({
           <ViewTracker onChange={setActiveView} />
 
           <color attach="background" args={["#1C1C1C"]} />
-          <fog attach="fog" args={["#1C1C1C", 200, 600]} />
+          <fog attach="fog" args={["#1C1C1C", 800, 100000000]} />
 
           <ambientLight intensity={0.45} />
           <directionalLight

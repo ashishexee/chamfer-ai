@@ -16,6 +16,11 @@ export interface Parameter {
   step: number;
 }
 
+export interface Specification {
+  question: string;
+  answer: string;
+}
+
 export interface ClarificationOption {
   question: string;
   key: string;
@@ -33,7 +38,7 @@ export interface WorkflowStep {
   icon: string;
   label: string;
   detail: string;
-  status?: 'running' | 'done' | 'error';
+  status?: 'pending' | 'running' | 'done' | 'error';
   timestamp?: number;
 }
 
@@ -92,9 +97,101 @@ export interface InspectionData {
   has_volume?: boolean;
   is_valid?: boolean;
   is_solid?: boolean;
-  bounding_box?: { size?: number[]; min?: number[]; max?: number[]; center?: number[] };
+  is_closed?: boolean | null;
+  bounding_box?: {
+    size?: number[];
+    min?: number[];
+    max?: number[];
+    center?: number[];
+  };
   center_of_mass?: number[];
   warnings?: string[];
   errors?: string[];
   all_clear?: boolean;
+  visionChecking?: boolean;
+  visionVerified?: boolean;
+  visionFeedback?: string;
+}
+
+export interface TEEProof {
+  providerAddress: string;
+  chatId: string;
+  signature: string;
+  timestamp: number;
+  verified: boolean;
+}
+
+export interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+  specifications?: Specification[];
+  provider?: string;
+  dimViews?: Record<string, string>;
+  error?: string;
+  clarification?: ClarificationOption[];
+  clarificationAnswers?: ClarificationAnswer[];
+  teeProof?: TEEProof;
+  steps?: WorkflowStep[];
+  bestEffort?: boolean;
+  warning?: string;
+  inspection?: InspectionData;
+  snapshots?: Record<string, string>;
+  visionVerified?: boolean;
+  visionFeedback?: string;
+  timestamp?: number;
+}
+
+export interface Provider {
+  id: string;
+  name: string;
+  desc: string;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  messages: Message[];
+  parameters?: Record<string, number>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SessionListItem {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count?: number;
+}
+
+export interface SavedModel {
+  id: string;
+  name: string;
+  root_hash_stl?: string;
+  root_hash_step?: string;
+  root_hash_glb?: string;
+  root_hash_snapshots?: string;
+  root_hash_inspection?: string;
+  parameters?: Record<string, number>;
+  inspection?: InspectionData;
+  bounding_box?: { size?: number[] };
+  created_at: string;
+}
+
+export interface RootHashData {
+  code?: string;
+  stl?: string;
+  step?: string;
+  glb?: string;
+  dimViews?: string;
+  snapshots?: string;
+  inspection?: string;
+}
+
+export interface GenerationResult {
+  code: string;
+  parameters: Record<string, ParameterSchema>;
+  description: string;
+  tags: string[];
+  teeProof?: TEEProof;
 }

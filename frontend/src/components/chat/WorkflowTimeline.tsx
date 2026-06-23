@@ -1,9 +1,8 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Search, HelpCircle, Code, Cpu, Ruler, Camera, Eye, Wrench,
-  PackageCheck, Check, Loader2, AlertCircle, ChevronDown, Brain,
-  type LucideIcon,
+  Search, HelpCircle, Code, Cpu, Ruler, Camera, Eye,
+  PackageCheck, Check, ChevronDown, Brain, type LucideIcon,
 } from 'lucide-react';
 import type { WorkflowStep } from '@/types';
 import { cn } from '@/lib/utils';
@@ -16,26 +15,37 @@ const ICONS: Record<string, LucideIcon> = {
   ruler: Ruler,
   camera: Camera,
   eye: Eye,
-  wrench: Wrench,
   'package-check': PackageCheck,
 };
 
+const SKELETON_STEPS: WorkflowStep[] = [
+  { id: 'analyze', icon: 'search', label: 'Analyzing request', detail: 'Identifying geometry type and parameters', status: 'running', timestamp: 0 },
+  { id: 'clarify', icon: 'help-circle', label: 'Specifications', detail: 'Clarification options were offered', status: 'pending', timestamp: 0 },
+  { id: 'generate', icon: 'code', label: 'Writing CadQuery code', detail: 'Drafting parametric Python script', status: 'pending', timestamp: 0 },
+  { id: 'execute', icon: 'cpu', label: 'Executing CadQuery', detail: 'Sandbox run completed', status: 'pending', timestamp: 0 },
+  { id: 'inspect', icon: 'ruler', label: 'Inspecting geometry', detail: 'Geometry validation passed', status: 'pending', timestamp: 0 },
+  { id: 'dimviews', icon: 'camera', label: 'Drawing dimensional views', detail: 'Orthographic projections rendered', status: 'pending', timestamp: 0 },
+  { id: 'vision', icon: 'eye', label: 'Visual inspection', detail: 'Render matches the request', status: 'pending', timestamp: 0 },
+  { id: 'deliver', icon: 'package-check', label: 'Preparing deliverables', detail: 'Files packaged and ready', status: 'pending', timestamp: 0 },
+];
+
 interface WorkflowTimelineProps {
-  steps: WorkflowStep[];
+  steps?: WorkflowStep[];
   reasoning?: string;
+  provider?: string;
 }
 
-export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
+export function WorkflowTimeline({ steps, reasoning, provider }: WorkflowTimelineProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    ...Object.fromEntries(steps.map(s => [s.id, s.status === 'done' || s.status === 'running' || s.status === 'error'])),
+    ...Object.fromEntries((steps || []).map(s => [s.id, s.status === 'done' || s.status === 'running' || s.status === 'error'])),
   });
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const seenRef = useRef<Set<string>>(new Set());
 
-  if (!steps || steps.length === 0) return null;
+  const displaySteps = steps && steps.length > 0 ? steps : SKELETON_STEPS;
 
-  const doneCount = steps.filter(s => s.status === 'done').length;
-  const syntheticReasoning = steps
+  const doneCount = displaySteps.filter(s => s.status === 'done').length;
+  const syntheticReasoning = displaySteps
     .filter(s => s.detail && s.status === 'done')
     .map(s => `${s.label}: ${s.detail}`)
     .join('\n\n');
@@ -48,7 +58,7 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="flex gap-0.5">
-              {steps.map(s => (
+              {displaySteps.map(s => (
                 <div
                   key={s.id}
                   className={cn(
@@ -63,7 +73,7 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
             <span className="text-[10px] font-semibold text-adam-text-tertiary uppercase tracking-[0.1em]">Workflow</span>
           </div>
           <span className="text-[10px] text-adam-text-tertiary tabular-nums">
-            {doneCount}/{steps.length}
+            {doneCount}/{displaySteps.length}
           </span>
         </div>
       </div>
@@ -74,15 +84,13 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
         <div className="absolute left-[1.125rem] top-4 bottom-4 w-px bg-gradient-to-b from-adam-neutral-700/30 via-adam-neutral-700/20 to-adam-neutral-700/10" />
 
         <div className="space-y-0.5">
-          {steps.map((step) => {
+          {displaySteps.map((step) => {
             const Icon = ICONS[step.icon] || Code;
-            const isExpanded = expanded[step.id];
             const isDone = step.status === 'done';
             const isError = step.status === 'error';
             const isRunning = step.status === 'running';
             const isNew = !seenRef.current.has(step.id);
 
-            // Mark as seen
             if (isNew) {
               seenRef.current.add(step.id);
             }
@@ -95,6 +103,8 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
                   transition: { duration: 0.15 },
                 }
               : {};
+
+            const isExpanded = expanded[step.id];
 
             return (
               <StepWrapper
@@ -119,10 +129,6 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
                   )}>
                     {isDone ? (
                       <Check className="h-3 w-3" strokeWidth={3} />
-                    ) : isError ? (
-                      <AlertCircle className="h-3 w-3" />
-                    ) : isRunning ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
                     ) : (
                       <Icon className="h-3 w-3" />
                     )}
@@ -189,38 +195,36 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
       </div>
 
       {/* Reasoning section */}
-      <div className="border-t border-adam-neutral-700/20 px-3 py-2">
-        {(hasRealReasoning || syntheticReasoning) && (
-        <>
-        <button
-          onClick={() => setReasoningOpen(prev => !prev)}
-          className="w-full flex items-center gap-1.5 text-[10px] text-adam-text-tertiary hover:text-adam-text-secondary transition-colors"
-        >
-          <Brain className="h-3 w-3" />
-          <span className="flex-1 text-left">{hasRealReasoning ? 'Model reasoning' : 'Thinking summary'}</span>
-          <ChevronDown className={cn(
-            'h-3 w-3 transition-transform duration-200',
-            reasoningOpen ? 'rotate-180' : ''
-          )} />
-        </button>
-        <AnimatePresence initial={false}>
-          {reasoningOpen && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
-              className="overflow-hidden"
-            >
-              <div className="mt-1.5 text-[10px] text-adam-text-tertiary/70 bg-adam-bg-dark/40 rounded-lg p-2.5 max-h-48 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed ring-1 ring-adam-neutral-700/15">
-                {hasRealReasoning ? reasoning : syntheticReasoning}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-        </>
-        )}
-      </div>
+      {(hasRealReasoning || syntheticReasoning) && (
+        <div className="border-t border-adam-neutral-700/20 px-3 py-2">
+          <button
+            onClick={() => setReasoningOpen(prev => !prev)}
+            className="w-full flex items-center gap-1.5 text-[10px] text-adam-text-tertiary hover:text-adam-text-secondary transition-colors"
+          >
+            <Brain className="h-3 w-3" />
+            <span className="flex-1 text-left">{hasRealReasoning ? 'Model reasoning' : 'Thinking summary'}</span>
+            <ChevronDown className={cn(
+              'h-3 w-3 transition-transform duration-200',
+              reasoningOpen ? 'rotate-180' : ''
+            )} />
+          </button>
+          <AnimatePresence initial={false}>
+            {reasoningOpen && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="mt-1.5 text-[10px] text-adam-text-tertiary/70 bg-adam-bg-dark/40 rounded-lg p-2.5 max-h-48 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed ring-1 ring-adam-neutral-700/15">
+                  {hasRealReasoning ? reasoning : syntheticReasoning}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 }

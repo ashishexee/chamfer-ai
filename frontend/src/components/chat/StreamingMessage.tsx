@@ -1,20 +1,14 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { WorkflowTimeline } from './WorkflowTimeline';
 import { NutIcon } from '@/components/hardware/NutIcon';
 import type { WorkflowStep } from '@/types';
-import { cn } from '@/lib/utils';
 
 interface StreamingMessageProps {
-  reasoning: string;
   steps?: WorkflowStep[];
+  reasoning?: string;
 }
 
-export function StreamingMessage({ reasoning, steps }: StreamingMessageProps) {
-  const hasSteps = steps && steps.length > 0;
-  const [reasoningOpen, setReasoningOpen] = useState(true);
-
+export function StreamingMessage({ steps, reasoning }: StreamingMessageProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -56,49 +50,9 @@ export function StreamingMessage({ reasoning, steps }: StreamingMessageProps) {
         </div>
       </div>
 
-      {/* Content */}
+      {/* Workflow timeline — skeleton shown immediately, live steps replace as they arrive */}
       <div className="px-3.5 pb-3.5">
-        {hasSteps ? (
-          <WorkflowTimeline steps={steps!} reasoning={reasoning || undefined} />
-        ) : (
-          <div className="text-[12px] text-adam-text-tertiary leading-relaxed">
-            {reasoning ? (
-              <>
-                <button
-                  onClick={() => setReasoningOpen(prev => !prev)}
-                  className="w-full flex items-center gap-1.5 text-[10px] text-adam-text-tertiary hover:text-adam-text-secondary transition-colors mb-1.5"
-                >
-                  <span className="inline-block w-1 h-1 rounded-full bg-adam-blue animate-pulse" />
-                  <span className="flex-1 text-left">Thinking... ({reasoning.length} chars)</span>
-                  <ChevronDown className={cn(
-                    'h-3 w-3 transition-transform duration-200',
-                    reasoningOpen ? 'rotate-180' : ''
-                  )} />
-                </button>
-                <AnimatePresence initial={false}>
-                  {reasoningOpen && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
-                      className="overflow-hidden"
-                    >
-                      <div className="text-[11px] text-adam-text-tertiary/80 bg-adam-bg-dark/50 rounded-lg p-2.5 leading-relaxed max-h-60 overflow-y-auto whitespace-pre-wrap font-mono ring-1 ring-adam-neutral-700/20">
-                        {reasoning}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </>
-            ) : (
-              <div className="flex items-center gap-2 text-[12px] text-adam-text-tertiary">
-                <span className="inline-block w-1 h-1 rounded-full bg-adam-blue animate-pulse" />
-                Analyzing your request...
-              </div>
-            )}
-          </div>
-        )}
+        <WorkflowTimeline steps={steps} reasoning={reasoning || undefined} />
       </div>
     </motion.div>
   );

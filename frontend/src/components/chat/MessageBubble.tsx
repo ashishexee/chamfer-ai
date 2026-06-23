@@ -135,8 +135,8 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
           </div>
         )}
 
-        {message.clarificationAnswers && message.clarificationAnswers.length > 0 ? (
-          <ClarificationAnswers answers={message.clarificationAnswers} />
+        {(message.clarificationAnswers && message.clarificationAnswers.length > 0) || (message.specifications && message.specifications.length > 0) ? (
+          <ClarificationAnswers specifications={message.clarificationAnswers || message.specifications || []} />
         ) : (
           <div className={cn(
             'text-sm leading-relaxed',

@@ -21,13 +21,14 @@ interface ChatInputProps {
   images: string[];
   onImagesChange: (images: string[]) => void;
   providerSupportsVision: boolean;
+  isConnected?: boolean;
 }
 
 export function ChatInput({
   prompt, setPrompt, onSubmit, isGenerating, isFocused, setIsFocused,
   provider, setProvider, placeholder, reasoningEnabled, setReasoningEnabled,
   showAnimatedPlaceholder, images, onImagesChange,
-  providerSupportsVision,
+  providerSupportsVision, isConnected = true,
 }: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -155,13 +156,14 @@ export function ChatInput({
           </button>
           <button
             onClick={() => onSubmit()}
-            disabled={isGenerating || (!prompt.trim() && images.length === 0)}
+            disabled={!isConnected || isGenerating || (!prompt.trim() && images.length === 0)}
             className={cn(
               'flex h-8 w-8 items-center justify-center rounded-lg transition-all',
-              (prompt.trim() || images.length > 0) && !isGenerating
+              (prompt.trim() || images.length > 0) && !isGenerating && isConnected
                 ? 'bg-adam-blue text-white hover:bg-adam-blue/90 shadow-[0_2px_8px_rgba(0,166,255,0.25)]'
                 : 'bg-adam-neutral-800/60 text-adam-text-tertiary cursor-not-allowed'
             )}
+            title={!isConnected ? "Please connect your wallet first" : ""}
           >
             <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
           </button>
