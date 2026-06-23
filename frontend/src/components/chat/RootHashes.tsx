@@ -14,7 +14,7 @@ interface RootHashesProps {
   loading: boolean;
 }
 
-const EXPLORER_BASE = 'https://scan-testnet.0g.ai/file/';
+const EXPLORER_BASE = 'https://chainscan-galileo.0g.ai/tx/';
 
 const LABELS: { key: keyof RootHashData; label: string }[] = [
   { key: 'code', label: 'Code' },
