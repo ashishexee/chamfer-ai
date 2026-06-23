@@ -5,9 +5,10 @@ import type { ClarificationOption } from '@/types';
 interface ClarificationMessageProps {
   questions: ClarificationOption[];
   onSubmit: (answers: string, answerList: { question: string; answer: string }[]) => void;
+  isGenerating?: boolean;
 }
 
-export function ClarificationMessage({ questions, onSubmit }: ClarificationMessageProps) {
+export function ClarificationMessage({ questions, onSubmit, isGenerating }: ClarificationMessageProps) {
   const [selections, setSelections] = useState<Record<string, string>>(
     Object.fromEntries(questions.map(q => [q.key, q.default || '']))
   );
@@ -56,11 +57,12 @@ export function ClarificationMessage({ questions, onSubmit }: ClarificationMessa
                     <button
                       key={j}
                       onClick={() => selectOption(q.key, opt)}
+                      disabled={isGenerating}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
                         isSelected
                           ? 'bg-adam-blue text-white border border-adam-blue'
                           : 'bg-adam-neutral-800 text-adam-text-secondary border border-adam-neutral-700 hover:bg-adam-neutral-700 hover:text-adam-text-primary'
-                      }`}
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
                     >
                       {isSelected && <Check className="h-3 w-3" />}
                       {opt}
@@ -71,8 +73,9 @@ export function ClarificationMessage({ questions, onSubmit }: ClarificationMessa
                   type="text"
                   value={customInputs[q.key] || ''}
                   onChange={e => setCustom(q.key, e.target.value)}
+                  disabled={isGenerating}
                   placeholder="Custom..."
-                  className="w-24 border border-adam-neutral-700 rounded-lg px-2.5 py-1.5 text-xs bg-adam-bg-dark text-adam-text-primary outline-none focus:border-adam-blue placeholder:text-adam-text-tertiary"
+                  className="w-24 border border-adam-neutral-700 rounded-lg px-2.5 py-1.5 text-xs bg-adam-bg-dark text-adam-text-primary outline-none focus:border-adam-blue placeholder:text-adam-text-tertiary disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
             ) : (
@@ -80,10 +83,11 @@ export function ClarificationMessage({ questions, onSubmit }: ClarificationMessa
                 type="text"
                 value={selections[q.key] || ''}
                 onChange={e => setSelections(prev => ({ ...prev, [q.key]: e.target.value }))}
-                onKeyDown={e => { if (e.key === 'Enter' && i === questions.length - 1) handleSubmit(); }}
+                onKeyDown={e => { if (e.key === 'Enter' && i === questions.length - 1 && !isGenerating) handleSubmit(); }}
+                disabled={isGenerating}
                 placeholder="Type your answer..."
                 autoFocus={i === 0}
-                className="w-full border border-adam-neutral-700 rounded-lg px-3 py-1.5 text-sm bg-adam-bg-dark text-adam-text-primary outline-none focus:border-adam-blue placeholder:text-adam-text-tertiary"
+                className="w-full border border-adam-neutral-700 rounded-lg px-3 py-1.5 text-sm bg-adam-bg-dark text-adam-text-primary outline-none focus:border-adam-blue placeholder:text-adam-text-tertiary disabled:opacity-50 disabled:cursor-not-allowed"
               />
             )}
           </div>
@@ -92,15 +96,17 @@ export function ClarificationMessage({ questions, onSubmit }: ClarificationMessa
       <div className="flex gap-2">
         <button
           onClick={handleAllDecide}
-          className="flex-1 rounded-lg border border-adam-neutral-700 px-3 py-2 text-xs text-adam-text-secondary hover:bg-adam-neutral-800 transition-colors"
+          disabled={isGenerating}
+          className="flex-1 rounded-lg border border-adam-neutral-700 px-3 py-2 text-xs text-adam-text-secondary hover:bg-adam-neutral-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Let model decide all
         </button>
         <button
           onClick={handleSubmit}
-          className="flex-1 rounded-lg bg-adam-blue px-3 py-2 text-xs text-white hover:bg-adam-blue/80 transition-colors font-medium"
+          disabled={isGenerating}
+          className="flex-1 rounded-lg bg-adam-blue px-3 py-2 text-xs text-white hover:bg-adam-blue/80 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Generate
+          {isGenerating ? 'Generating...' : 'Generate'}
         </button>
       </div>
     </div>

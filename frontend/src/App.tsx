@@ -5,6 +5,7 @@ import type { Parameter, Message, InspectionData, ClarificationOption, WorkflowS
 import { API_URL, CHAT_ENDPOINTS, MODEL_ENDPOINTS } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
 // Components
+import { HeaderAuth } from '@/components/auth/HeaderAuth';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { PreviewPanel } from '@/components/layout/PreviewPanel';
 import { ChatInput } from '@/components/chat/ChatInput';
@@ -349,9 +350,6 @@ export default function App() {
       headers: { 'Authorization': `Bearer ${auth.address}` },
     }).then(r => r.json()).then(d => {
       setChatSessions(d.sessions || []);
-      if (d.sessions?.length > 0) {
-        handleLoadSessionRef.current(d.sessions[0].id);
-      }
     }).catch(() => {});
   }, [auth.isConnected, auth.address]);
 
@@ -711,6 +709,9 @@ export default function App() {
       />
 
       <div className="relative flex-1 overflow-auto bg-adam-bg-dark">
+        <div className="absolute top-4 right-6 z-50">
+          <HeaderAuth />
+        </div>
         <div className={`h-full bg-adam-bg-dark ${sidebarOpen ? 'p-6' : 'p-0'}`}>
           <div className="h-full bg-adam-bg-secondary-dark rounded-xl overflow-hidden flex relative">
 
@@ -728,6 +729,7 @@ export default function App() {
                       placeholder="Start building with VibeCAD..."
                       reasoningEnabled={reasoningEnabled} setReasoningEnabled={setReasoningEnabled}
                       showAnimatedPlaceholder
+                      isConnected={auth.isConnected}
                     />
                     <div className="flex flex-wrap justify-center gap-2">
                       <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-adam-text-secondary">
@@ -766,7 +768,7 @@ export default function App() {
                     <div ref={chatContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-3 pb-3 space-y-3">
                       {messages.map((msg, i) => (
                         msg.clarification ? (
-                          <ClarificationMessage key={i} questions={msg.clarification} onSubmit={handleClarificationSubmit} />
+                          <ClarificationMessage key={i} questions={msg.clarification} onSubmit={handleClarificationSubmit} isGenerating={isGenerating} />
                         ) : (
                           (isGenerating && i === messages.length - 1 && msg.role === 'assistant' && !msg.content) ? null : (
                           <div key={i} className={`rounded-xl p-3 text-sm ${msg.role === 'user' ? 'bg-adam-background-1' : msg.error ? 'bg-red-500/10' : 'bg-adam-background-1'}`}>
@@ -818,6 +820,7 @@ export default function App() {
                         provider={provider} setProvider={setProvider}
                         placeholder="Modify your model..."
                         reasoningEnabled={reasoningEnabled} setReasoningEnabled={setReasoningEnabled}
+                        isConnected={auth.isConnected}
                       />
                     </div>
                   </div>
@@ -875,9 +878,9 @@ export default function App() {
                   panelRef={rightPanelRef}
                   collapsible
                   collapsedSize={0}
-                  minSize={18}
+                  minSize={300}
                   defaultSize={0}
-                  maxSize={350}
+                  maxSize={400}
                   order={3}
                   onResize={size => {
                     if (panelAnimating) return;

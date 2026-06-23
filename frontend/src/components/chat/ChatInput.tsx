@@ -15,12 +15,13 @@ interface ChatInputProps {
   reasoningEnabled: boolean;
   setReasoningEnabled: (v: boolean) => void;
   showAnimatedPlaceholder?: boolean;
+  isConnected?: boolean;
 }
 
 export function ChatInput({
   prompt, setPrompt, onSubmit, isGenerating, isFocused, setIsFocused,
   provider, setProvider, placeholder, reasoningEnabled, setReasoningEnabled,
-  showAnimatedPlaceholder,
+  showAnimatedPlaceholder, isConnected = true,
 }: ChatInputProps) {
   return (
     <div className={`relative rounded-2xl border-2 transition-all duration-300 ${
@@ -59,8 +60,9 @@ export function ChatInput({
           </button>
           <button
             onClick={() => onSubmit()}
-            disabled={isGenerating || !prompt.trim()}
+            disabled={!isConnected || isGenerating || !prompt.trim()}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-adam-blue text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-adam-blue/80 transition-colors"
+            title={!isConnected ? "Please connect your wallet first" : ""}
           >
             <ArrowUp className="h-5 w-5" />
           </button>

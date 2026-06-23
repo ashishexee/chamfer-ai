@@ -82,11 +82,9 @@ export function Sidebar({
         )}
         {(!isConnected || !sessions || sessions.length === 0) && <div className="flex-1" />}
 
-        {/* Wallet / login section */}
-        <div className={`${isOpen ? 'px-4' : 'px-2'} py-3 border-t border-adam-neutral-800`}>
-          {isAuthLoading ? (
-            <div className="text-[10px] text-adam-text-tertiary text-center">...</div>
-          ) : isConnected && walletAddress ? (
+        {/* Wallet / disconnect section */}
+        {isConnected && walletAddress && (
+          <div className={`${isOpen ? 'px-4' : 'px-2'} py-3 border-t border-adam-neutral-800`}>
             <div className="space-y-2">
               {isOpen ? (
                 <div className="text-[10px] text-adam-text-tertiary truncate font-mono" title={walletAddress}>
@@ -110,21 +108,8 @@ export function Sidebar({
                 </button>
               )}
             </div>
-          ) : (
-            onConnect && (
-              <button
-                onClick={onConnect}
-                className={`${isOpen
-                  ? 'flex w-full items-center justify-center gap-1.5 rounded-lg border border-adam-blue/50 bg-adam-blue/10 px-2 py-1.5 text-[10px] text-adam-blue hover:bg-adam-blue/20 transition-colors font-medium'
-                  : 'flex justify-center'
-                }`}
-              >
-                <LogIn className="h-3 w-3" />
-                {isOpen && 'Login / Sign Up'}
-              </button>
-            )
-          )}
-        </div>
+          </div>
+        )}
 
         <div className={`${isOpen ? 'px-4' : 'px-2'} py-4 border-t border-adam-neutral-800`}>
           {isOpen ? (
