@@ -914,11 +914,11 @@ export default function App() {
                       )}
 
                       {/* Parameters */}
-                      {parameters.length > 0 && (
+                      {Object.keys(parameters).length > 0 && (
                         <div className="p-4 border-b border-adam-neutral-700/40">
                           <div className="flex items-center justify-between mb-3">
                             <h3 className="text-xs font-semibold text-adam-text-tertiary/80 uppercase tracking-wider">Parameters</h3>
-                            <span className="text-[10px] text-adam-text-tertiary/60 tabular-nums">{parameters.length} params</span>
+                            <span className="text-[10px] text-adam-text-tertiary/60 tabular-nums">{Object.keys(parameters).length} params</span>
                           </div>
                           <ParameterPanel parameters={parameters} values={paramValues} onChange={handleParamChange} />
                           {isParamUpdating && (
@@ -960,7 +960,7 @@ export default function App() {
                       {currentCode && <CodeSection code={currentCode} />}
 
                       {/* Empty State */}
-                      {parameters.length === 0 && !currentCode && (
+                      {Object.keys(parameters).length === 0 && !currentCode && (
                         <div className="flex-1 flex items-center justify-center p-6">
                           <div className="text-center">
                             <div className="w-10 h-10 rounded-full bg-adam-neutral-800 flex items-center justify-center mx-auto mb-3">
