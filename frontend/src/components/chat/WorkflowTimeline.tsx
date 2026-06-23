@@ -19,14 +19,14 @@ const ICONS: Record<string, LucideIcon> = {
 };
 
 const SKELETON_STEPS: WorkflowStep[] = [
-  { id: 'analyze', icon: 'search', label: 'Analyzing request', detail: 'Identifying geometry type and parameters', status: 'done', timestamp: 0 },
-  { id: 'clarify', icon: 'help-circle', label: 'Specifications', detail: 'Clarification options were offered', status: 'done', timestamp: 0 },
-  { id: 'generate', icon: 'code', label: 'Writing CadQuery code', detail: 'Drafting parametric Python script', status: 'done', timestamp: 0 },
-  { id: 'execute', icon: 'cpu', label: 'Executing CadQuery', detail: 'Sandbox run completed', status: 'done', timestamp: 0 },
-  { id: 'inspect', icon: 'ruler', label: 'Inspecting geometry', detail: 'Geometry validation passed', status: 'done', timestamp: 0 },
-  { id: 'dimviews', icon: 'camera', label: 'Drawing dimensional views', detail: 'Orthographic projections rendered', status: 'done', timestamp: 0 },
-  { id: 'vision', icon: 'eye', label: 'Visual inspection', detail: 'Render matches the request', status: 'done', timestamp: 0 },
-  { id: 'deliver', icon: 'package-check', label: 'Preparing deliverables', detail: 'Files packaged and ready', status: 'done', timestamp: 0 },
+  { id: 'analyze', icon: 'search', label: 'Analyzing request', detail: 'Identifying geometry type and parameters', status: 'running', timestamp: 0 },
+  { id: 'clarify', icon: 'help-circle', label: 'Specifications', detail: 'Clarification options were offered', status: 'pending', timestamp: 0 },
+  { id: 'generate', icon: 'code', label: 'Writing CadQuery code', detail: 'Drafting parametric Python script', status: 'pending', timestamp: 0 },
+  { id: 'execute', icon: 'cpu', label: 'Executing CadQuery', detail: 'Sandbox run completed', status: 'pending', timestamp: 0 },
+  { id: 'inspect', icon: 'ruler', label: 'Inspecting geometry', detail: 'Geometry validation passed', status: 'pending', timestamp: 0 },
+  { id: 'dimviews', icon: 'camera', label: 'Drawing dimensional views', detail: 'Orthographic projections rendered', status: 'pending', timestamp: 0 },
+  { id: 'vision', icon: 'eye', label: 'Visual inspection', detail: 'Render matches the request', status: 'pending', timestamp: 0 },
+  { id: 'deliver', icon: 'package-check', label: 'Preparing deliverables', detail: 'Files packaged and ready', status: 'pending', timestamp: 0 },
 ];
 
 interface WorkflowTimelineProps {
