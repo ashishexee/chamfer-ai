@@ -8,9 +8,10 @@ import { cn } from '@/lib/utils';
 
 interface StreamingMessageProps {
   steps?: WorkflowStep[];
+  reasoning?: string;
 }
 
-export function StreamingMessage({ steps }: StreamingMessageProps) {
+export function StreamingMessage({ steps, reasoning }: StreamingMessageProps) {
   const hasSteps = steps && steps.length > 0;
   const [reasoningOpen, setReasoningOpen] = useState(true);
 

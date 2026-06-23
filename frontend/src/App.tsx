@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, Fragment } from 'react';
 import { Eye, PanelLeftClose, PanelRightClose, PanelLeftOpen, PanelRightOpen, Save } from 'lucide-react';
 import { NutIcon } from '@/components/hardware/NutIcon';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
@@ -793,12 +793,12 @@ export default function App() {
                           <ClarificationMessage key={i} questions={msg.clarification} onSubmit={handleClarificationSubmit} isGenerating={isGenerating} />
                         ) : (
                           (isGenerating && i === messages.length - 1 && msg.role === 'assistant' && !msg.content) ? null : (
-                            <>
-                              <MessageBubble key={i} message={msg} />
+                            <Fragment key={i}>
+                              <MessageBubble message={msg} />
                               {msg.role === 'assistant' && i === messages.length - 1 && (
                                 <RootHashes hashes={rootHashes} loading={rootHashesLoading} />
                               )}
-                            </>
+                            </Fragment>
                           )
                         )
                       ))}
@@ -807,6 +807,7 @@ export default function App() {
                           steps={messages.length > 0 && messages[messages.length - 1].role === 'assistant'
                             ? messages[messages.length - 1].steps
                             : undefined}
+                          reasoning={streamReasoning}
                         />
                       )}
                       <div ref={chatEndRef} />
