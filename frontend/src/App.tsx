@@ -13,6 +13,7 @@ import { ChatInput } from '@/components/chat/ChatInput';
 import { StreamingMessage } from '@/components/chat/StreamingMessage';
 import { ClarificationMessage } from '@/components/chat/ClarificationMessage';
 import { MessageBubble } from '@/components/chat/MessageBubble';
+import { EditInput } from '@/components/chat/EditInput';
 import { DimViews } from '@/components/chat/DimViews';
 import { RootHashes } from '@/components/chat/RootHashes';
 import type { RootHashData, TxSeqData } from '@/components/chat/RootHashes';
@@ -43,11 +44,15 @@ export default function App() {
 
   // State
   const [prompt, setPrompt] = useState('');
+  const [images, setImages] = useState<string[]>([]);
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+  const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
+  const [editOriginalPrompt, setEditOriginalPrompt] = useState('');
   const [chatSessionId, setChatSessionId] = useState<string | null>(null);
   const [chatSessions, setChatSessions] = useState<SessionListItem[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [provider, setProvider] = useState('mimo-pro');
+  const [provider, setProvider] = useState('mimo');
   const [parameters, setParameters] = useState<Record<string, ParameterSchema>>({});
   const [currentCode, setCurrentCode] = useState('');
   const [stlUrl, setStlUrl] = useState<string | null>(null);
@@ -67,6 +72,7 @@ export default function App() {
   const [isFocused, setIsFocused] = useState(false);
   const [streamReasoning, setStreamReasoning] = useState('');
   const [reasoningEnabled, setReasoningEnabled] = useState(true);
+  const [providerSupportsVision, setProviderSupportsVision] = useState(false);
   const [exportFilename, setExportFilename] = useState('model');
   const [snapshots, setSnapshots] = useState<Record<string, string>>({});
   const [dimViews, setDimViews] = useState<Record<string, string>>({});
@@ -135,6 +141,24 @@ export default function App() {
     return () => { if (stlObjectUrl) URL.revokeObjectURL(stlObjectUrl); };
   }, [stlObjectUrl]);
 
+  // Check if current provider supports vision
+  useEffect(() => {
+    fetch(`${API_URL}/api/providers`)
+      .then(r => r.json())
+      .then(data => {
+        const p = (data.providers || []).find((p: any) => p.id === provider);
+        setProviderSupportsVision(p?.supportsVision || false);
+      })
+      .catch(() => setProviderSupportsVision(false));
+  }, [provider]);
+
+  // Clear images if provider changed to non-vision
+  useEffect(() => {
+    if (!providerSupportsVision && images.length > 0) {
+      setImages([]);
+    }
+  }, [providerSupportsVision]);
+
   const saveCurrentSession = useCallback(() => {
     if (!auth.isConnected || messages.length === 0) return;
     const allMsgs = messages.map(m => ({
@@ -195,7 +219,6 @@ export default function App() {
       throw new Error(data.error || `0G upload request failed: ${res.status}`);
     }
 
-    // Read SSE stream
     const reader = res.body?.getReader();
     if (!reader) throw new Error('No response body');
 
@@ -269,44 +292,25 @@ export default function App() {
       setIsStoringIteration(false);
     }
   }, [
-    chatSessionId,
-    latestMessageOrder,
-    currentCode,
-    stlBase64,
-    stepBase64,
-    glbBase64,
-    dimViews,
-    parameters,
-    inspection,
-    uploadModelTo0G,
+    chatSessionId, latestMessageOrder, currentCode,
+    stlBase64, stepBase64, glbBase64, dimViews,
+    parameters, inspection, uploadModelTo0G,
   ]);
 
   const handleLoadSession = useCallback(async (sessionId: string) => {
-    if (isGenerating) {
-      console.log('[LOAD] blocked: is generating');
-      return;
-    }
-    if (chatSessionId === sessionId) {
-      console.log('[LOAD] blocked: same session', sessionId);
-      return;
-    }
+    if (isGenerating) return;
+    if (chatSessionId === sessionId) return;
     if (messages.length > 0 && chatSessionId && auth.isConnected) {
       saveCurrentSession();
     }
     try {
-      console.log('[LOAD] fetching session:', sessionId);
       const res = await fetch(`${API_URL}${CHAT_ENDPOINTS.HISTORY(sessionId)}`, {
         headers: { 'Authorization': `Bearer ${auth.address || ''}` },
       });
-      console.log('[LOAD] response status:', res.status);
       if (!res.ok) return;
       const data = await res.json();
       const { session } = data;
-      if (!session) {
-        console.log('[LOAD] no session data');
-        return;
-      }
-      console.log('[LOAD] loaded session:', session.title, session.messages?.length, 'messages');
+      if (!session) return;
       setChatSessionId(session.id);
       setMessages(session.messages || []);
       setCurrentCode('');
@@ -336,19 +340,17 @@ export default function App() {
         if (modelRes.ok) {
           const modelData = await modelRes.json();
           const model = modelData.model;
-
           setLatestMessageOrder(typeof model.messageOrder === 'number' ? model.messageOrder : null);
           setCurrentCode(model.code || '');
           setStlBase64(model.stlBase64);
           setStepBase64(model.stepBase64);
           setGlbBase64(model.glbBase64);
           if (model.rootHashes) {
-            console.log('[0G] Frontend: restored root hashes from Supabase:', model.rootHashes);
             setRootHashes(model.rootHashes);
             setRootHashesLoading(false);
           } else {
             setRootHashes(null);
-      setTxSeqs(null);
+            setTxSeqs(null);
           }
           if (model.parameters?.length) {
             setParameters(model.parameters);
@@ -370,7 +372,6 @@ export default function App() {
               return next;
             });
           }
-
           if (model.stlBase64) {
             const bytes = Uint8Array.from(atob(model.stlBase64), c => c.charCodeAt(0));
             const blob = new Blob([bytes], { type: 'application/octet-stream' });
@@ -388,13 +389,11 @@ export default function App() {
     }
   }, [isGenerating, chatSessionId, messages, auth.isConnected, auth.address, saveCurrentSession, setParamValues, stlObjectUrl]);
 
-  // Keep latest handleLoadSession in a ref to avoid stale closure
   const handleLoadSessionRef = useRef(handleLoadSession);
   useEffect(() => {
     handleLoadSessionRef.current = handleLoadSession;
   }, [handleLoadSession]);
 
-  // Fetch sessions on connect and auto-load latest (runs once per wallet connect)
   useEffect(() => {
     if (!auth.isConnected || !auth.address) return;
     fetch(`${API_URL}${CHAT_ENDPOINTS.SESSIONS}`, {
@@ -404,7 +403,6 @@ export default function App() {
     }).catch(() => {});
   }, [auth.isConnected, auth.address]);
 
-  // Sync profile to Supabase on wallet connect
   useEffect(() => {
     if (!auth.isConnected || !auth.address) return;
     fetch(`${API_URL}/api/auth/verify`, {
@@ -413,26 +411,37 @@ export default function App() {
     }).catch(() => {});
   }, [auth.isConnected, auth.address]);
 
-  // Handlers
-  const handleGenerate = useCallback(async (answers?: string, overridePrompt?: string, answerList?: Specification[]) => {
+  // ── Handlers ──
+  const handleGenerate = useCallback(async (answers?: string, overridePrompt?: string, answerList?: Specification[], editMode?: boolean) => {
     const activePrompt = overridePrompt ?? prompt;
-    if (!activePrompt.trim() || isGenerating) return;
+    if ((!activePrompt.trim() && images.length === 0) || isGenerating) return;
     if (!auth.isConnected) { setPrompt(''); return; }
 
     const isClarificationContinue = !!overridePrompt;
-    const userMsg: Message = { role: 'user', content: activePrompt, timestamp: Date.now() };
+    const userMsg: Message = {
+      role: 'user',
+      content: activePrompt,
+      images: images.length > 0 ? [...images] : undefined,
+      timestamp: Date.now(),
+    };
     const answerMsg: Message | null = answers && answerList
       ? { role: 'user', content: answers, specifications: answerList, timestamp: Date.now() }
       : null;
-    if (!isClarificationContinue) {
+    if (!isClarificationContinue && !editMode) {
       setMessages(prev => [...prev, userMsg]);
     }
-    setPrompt('');
+    
+    if (!editMode) {
+      setPrompt('');
+      // Images are kept in state for multi-turn context (clarification, follow-up)
+      // They are only cleared when user explicitly removes them or starts a new task
+    }
     setIsGenerating(true);
     setStreamReasoning('');
     setSnapshots({});
     setDimViews({});
     setInspection(null);
+    setEditingMessageIndex(null);
     reasoningBufferRef.current = '';
     if (reasoningRafRef.current) { cancelAnimationFrame(reasoningRafRef.current); reasoningRafRef.current = null; }
 
@@ -440,9 +449,22 @@ export default function App() {
       const res = await fetch(`${API_URL}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ prompt: userMsg.content, provider, history: messages, answers, reasoning: reasoningEnabled }),
+        body: JSON.stringify({
+          prompt: userMsg.content,
+          provider,
+          history: messages,
+          answers,
+          reasoning: reasoningEnabled,
+          images: userMsg.images,
+          sessionId: editMode ? sessionId : undefined,
+          editMode: editMode || false,
+          enableVision: userMsg.images && userMsg.images.length > 0,
+        }),
       });
-      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Server error: ${res.status}`);
+      }
 
       const reader = res.body?.getReader();
       if (!reader) throw new Error('No response body');
@@ -459,10 +481,18 @@ export default function App() {
       assistantMessageIdRef.current = null;
 
       // Add a placeholder assistant message that will accumulate steps during generation
-      setMessages(prev => {
-        assistantMessageIdRef.current = prev.length;
-        return [...prev, { role: 'assistant', content: '', provider, steps: [], timestamp: Date.now() }];
-      });
+      if (!editMode) {
+        setMessages(prev => {
+          assistantMessageIdRef.current = prev.length;
+          return [...prev, { role: 'assistant', content: '', provider, steps: [], timestamp: Date.now() }];
+        });
+      } else {
+        // In edit mode, replace the message at editingMessageIndex or add new
+        setMessages(prev => {
+          assistantMessageIdRef.current = prev.length;
+          return [...prev, { role: 'assistant', content: '', provider, editMode: true, steps: [], timestamp: Date.now() }];
+        });
+      }
 
       const updateSteps = (steps: WorkflowStep[]) => {
         liveSteps = steps;
@@ -548,6 +578,7 @@ export default function App() {
                 if (data.inspection) setInspection(data.inspection);
                 if (data.snapshots) setSnapshots(data.snapshots);
                 if (data.visionVerified) visionVerified = true;
+                if (data.sessionId) setSessionId(data.sessionId);
                 const remainingRunning = liveSteps.filter(s => s.status === 'running');
                 if (remainingRunning.length > 0) {
                   const updated = liveSteps.map(s => s.status === 'running' ? { ...s, status: 'done' as const, detail: s.detail || 'Complete' } : s);
@@ -596,6 +627,8 @@ export default function App() {
           visionVerified: finalData.visionVerified,
           visionFeedback: visionFeedback || undefined,
           teeProof: finalData.teeProof,
+          sessionId: finalData.sessionId,
+          editMode: editMode || false,
           steps: liveSteps,
           timestamp: Date.now(),
         };
@@ -708,7 +741,7 @@ export default function App() {
       reasoningBufferRef.current = '';
       if (reasoningRafRef.current) { cancelAnimationFrame(reasoningRafRef.current); reasoningRafRef.current = null; }
     }
-  }, [prompt, isGenerating, provider, messages, stlObjectUrl, reasoningEnabled, setParamValues, auth.isConnected, authHeaders, chatSessionId, uploadModelTo0G]);
+  }, [prompt, images, isGenerating, provider, messages, stlObjectUrl, reasoningEnabled, sessionId, setParamValues, auth.isConnected, authHeaders, chatSessionId, uploadModelTo0G]);
 
   const handleClarificationSubmit = useCallback((answers: string, answerList: { question: string; answer: string }[]) => {
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
@@ -719,6 +752,40 @@ export default function App() {
     ]);
     handleGenerate(answers, lastUserMsg.content, answerList);
   }, [handleGenerate, messages]);
+
+  const handleEdit = useCallback((index: number) => {
+    const msg = messages[index];
+    if (msg.role !== 'assistant') return;
+    let prevUserMsg: Message | null = null;
+    for (let i = index - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        prevUserMsg = messages[i];
+        break;
+      }
+    }
+    setEditingMessageIndex(index);
+    setEditOriginalPrompt(prevUserMsg?.content || 'previous design');
+  }, [messages]);
+
+  const handleEditSubmit = useCallback((editPrompt: string) => {
+    setEditingMessageIndex(null);
+    handleGenerate(undefined, editPrompt, undefined, true);
+  }, [handleGenerate]);
+
+  const handleRetry = useCallback((index: number) => {
+    const msg = messages[index];
+    if (msg.role !== 'assistant') return;
+    let prevUserMsg: Message | null = null;
+    for (let i = index - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        prevUserMsg = messages[i];
+        break;
+      }
+    }
+    if (prevUserMsg) {
+      handleGenerate(undefined, prevUserMsg.content);
+    }
+  }, [messages, handleGenerate]);
 
   const handleNewTask = useCallback(() => {
     if (messages.length > 0 && chatSessionId && auth.isConnected) {
@@ -734,17 +801,20 @@ export default function App() {
     if (stlObjectUrl) URL.revokeObjectURL(stlObjectUrl);
     setStlObjectUrl(null);
     setPrompt('');
+    setImages([]);
     setStreamReasoning('');
     setExportFilename('model');
     setSnapshots({});
     setDimViews({});
     setInspection(null);
+    setSessionId(undefined);
+    setEditingMessageIndex(null);
     setChatSessionId(null);
     setLatestMessageOrder(null);
     setHasUnsavedParamIteration(false);
     setModelStorageStatus(null);
     setRootHashes(null);
-      setTxSeqs(null);
+    setTxSeqs(null);
     setRootHashesLoading(false);
     resetParams();
   }, [messages, chatSessionId, auth.isConnected, stlObjectUrl, saveCurrentSession, resetParams]);
@@ -783,12 +853,14 @@ export default function App() {
                 <GlowCard glowColor="blue" customSize className="w-full max-w-2xl">
                   <div className="space-y-4">
                     <ChatInput
-                      prompt={prompt} setPrompt={setPrompt} onSubmit={handleGenerate}
+                      prompt={prompt} setPrompt={setPrompt} onSubmit={() => handleGenerate()}
                       isGenerating={isGenerating} isFocused={isFocused} setIsFocused={setIsFocused}
                       provider={provider} setProvider={setProvider}
                       placeholder="Start building with Chamfer AI..."
                       reasoningEnabled={reasoningEnabled} setReasoningEnabled={setReasoningEnabled}
                       showAnimatedPlaceholder
+                      images={images} onImagesChange={setImages}
+                      providerSupportsVision={providerSupportsVision}
                       isConnected={auth.isConnected}
                     />
                     <div className="flex flex-wrap justify-center gap-2">
@@ -841,7 +913,19 @@ export default function App() {
                         ) : (
                           (isGenerating && i === messages.length - 1 && msg.role === 'assistant' && !msg.content) ? null : (
                             <Fragment key={i}>
-                              <MessageBubble message={msg} />
+                              <MessageBubble
+                                message={msg}
+                                index={i}
+                                onEdit={handleEdit}
+                                onRetry={handleRetry}
+                              />
+                              {editingMessageIndex === i && (
+                                <EditInput
+                                  originalPrompt={editOriginalPrompt}
+                                  onSubmit={handleEditSubmit}
+                                  onCancel={() => setEditingMessageIndex(null)}
+                                />
+                              )}
                               {msg.role === 'assistant' && i === messages.length - 1 && (
                                 <RootHashes hashes={rootHashes} txSeqs={txSeqs} loading={rootHashesLoading} progress={uploadProgress} />
                               )}
@@ -863,11 +947,13 @@ export default function App() {
                     {/* Input dock */}
                     <div className="border-t border-adam-neutral-700/40 p-3 bg-gradient-to-t from-white/[0.01] to-transparent">
                       <ChatInput
-                        prompt={prompt} setPrompt={setPrompt} onSubmit={handleGenerate}
+                        prompt={prompt} setPrompt={setPrompt} onSubmit={() => handleGenerate()}
                         isGenerating={isGenerating} isFocused={isFocused} setIsFocused={setIsFocused}
                         provider={provider} setProvider={setProvider}
                         placeholder="Modify your model..."
                         reasoningEnabled={reasoningEnabled} setReasoningEnabled={setReasoningEnabled}
+                        images={images} onImagesChange={setImages}
+                        providerSupportsVision={providerSupportsVision}
                         isConnected={auth.isConnected}
                       />
                     </div>

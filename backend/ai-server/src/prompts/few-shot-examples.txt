@@ -187,3 +187,116 @@ Assistant:
   "description": "An electronics enclosure with vent slots",
   "tags": ["enclosure", "housing", "electronics"]
 }
+
+---
+EXAMPLE 11 – Spoon with overlap (organic: box + ellipse cut, handle and bowl overlap for clean union)
+---
+User: "A spoon, 200mm long, with a handle and a bowl"
+Assistant:
+{
+  "code": "import cadquery as cq\n\n# Parameters\nspoon_length = 200.0\nhandle_length = 120.0\nhandle_width = 12.0\nhandle_thickness = 4.0\nhandle_end_x = 10.0\nbowl_width = 50.0\nbowl_length = 60.0\nbowl_depth = 8.0\nbowl_thickness = 2.0\noverlap = 5.0\n\n# Handle: elongated rectangular box, positioned so it overlaps with bowl\nhandle = (cq.Workplane('XY')\n    .box(handle_length, handle_width, handle_thickness, centered=True))\nhandle = handle.translate((-spoon_length/2 + handle_length/2 + overlap/2, 0, 0))\n\n# Bowl: flat rectangular base with elliptical depression cut\nbowl_base = (cq.Workplane('XY')\n    .box(bowl_length, bowl_width, bowl_thickness, centered=True))\n\n# Bowl depression: elliptical cut from top face\nbowl_cavity = (cq.Workplane('XY')\n    .workplane(offset=bowl_thickness/2)\n    .ellipse(bowl_length/2 - 4, bowl_width/2 - 4)\n    .extrude(-bowl_depth))\n\nbowl = bowl_base.cut(bowl_cavity)\n# Position bowl so it overlaps with handle by 'overlap' amount\nbowl = bowl.translate((spoon_length/2 - bowl_length/2 - overlap/2, 0, 0))\n\n# Combine handle and bowl with guaranteed overlap for clean union\nspoon = handle.union(bowl)\n\nresult = spoon",
+  "parameters": {
+    "spoon_length": {"type": "float", "default": 200.0, "min": 100, "max": 300, "step": 5, "description": "Overall spoon length mm"},
+    "handle_length": {"type": "float", "default": 120.0, "min": 60, "max": 200, "step": 5, "description": "Handle length mm"},
+    "handle_width": {"type": "float", "default": 12.0, "min": 5, "max": 20, "step": 1, "description": "Handle width mm"},
+    "bowl_width": {"type": "float", "default": 50.0, "min": 30, "max": 80, "step": 1, "description": "Bowl width mm"},
+    "bowl_depth": {"type": "float", "default": 8.0, "min": 3, "max": 15, "step": 1, "description": "Bowl depression depth mm"},
+    "overlap": {"type": "float", "default": 5.0, "min": 1, "max": 20, "step": 1, "description": "Handle-bowl overlap mm (prevents union errors)"}
+  },
+  "description": "A spoon with overlapping handle and bowl for reliable boolean union",
+  "tags": ["spoon", "kitchen", "organic"]
+}
+
+---
+EXAMPLE 12 – Hammer with connector (multi-part tool: head + handle + small connector for guaranteed union)
+---
+User: "A hammer with a claw head and a handle, 200mm overall length"
+Assistant:
+{
+  "code": "import cadquery as cq\n\n# Parameters\nhead_length = 60.0\nhead_width = 30.0\nhead_height = 30.0\nclaw_opening = 15.0\nhandle_length = 150.0\nhandle_diameter = 20.0\nconnector_length = 10.0\nconnector_diameter = 22.0\n\n# Hammer head: rectangular block with slot cut for claw\nhead = (cq.Workplane('XY')\n    .box(head_length, head_width, head_height, centered=True))\n\n# Claw slot (cut from one end)\nclaw_slot = (cq.Workplane('XY')\n    .box(claw_opening, head_width + 2, head_height + 2, centered=True))\nclaw_slot = claw_slot.translate((head_length/2 - claw_opening/2, 0, 0))\n\nhead = head.cut(claw_slot)\n\n# Connector: slightly larger cylinder that overlaps both head and handle\nconnector = (cq.Workplane('XY')\n    .circle(connector_diameter/2)\n    .extrude(connector_length))\nconnector = connector.translate((0, 0, handle_length/2 - connector_length/2))\n\n# Handle: cylinder\nhandle = (cq.Workplane('XY')\n    .circle(handle_diameter/2)\n    .extrude(handle_length))\nhandle = handle.translate((0, 0, -handle_length/2))\n\n# Position head to overlap with connector\nhead = head.translate((0, 0, handle_length/2 + connector_length/2))\n\n# Union all parts with guaranteed overlaps\nhammer = head.union(connector).union(handle)\n\nresult = hammer",
+  "parameters": {
+    "head_length": {"type": "float", "default": 60.0, "min": 30, "max": 100, "step": 5, "description": "Hammer head length mm"},
+    "handle_length": {"type": "float", "default": 150.0, "min": 80, "max": 250, "step": 5, "description": "Handle length mm"},
+    "handle_diameter": {"type": "float", "default": 20.0, "min": 10, "max": 35, "step": 1, "description": "Handle diameter mm"},
+    "connector_length": {"type": "float", "default": 10.0, "min": 5, "max": 20, "step": 1, "description": "Connector overlap length mm"}
+  },
+  "description": "A hammer with rectangular head, cylindrical handle, and overlapping connector piece",
+  "tags": ["hammer", "tool", "mechanical"]
+}
+
+---
+EXAMPLE 13 – Mug with overlapping handle (hollow body + handle that overlaps with body wall)
+---
+User: "A mug with a handle, 80mm diameter, 90mm tall"
+Assistant:
+{
+  "code": "import cadquery as cq\n\n# Parameters\nouter_diameter = 80.0\ninner_diameter = 70.0\nheight = 90.0\nwall_thickness = 5.0\nhandle_diameter = 12.0\nhandle_length = 40.0\nhandle_overlap = 5.0\n\n# Body: outer cylinder minus inner cylinder\nouter = (cq.Workplane('XY')\n    .circle(outer_diameter/2)\n    .extrude(height))\n\ninner = (cq.Workplane('XY')\n    .circle(inner_diameter/2)\n    .extrude(height + 2))\ninner = inner.translate((0, 0, -1))\n\nbody = outer.cut(inner)\n\n# Handle: C-shape made from cylinders and box that overlaps with body\n# Upper connection\nupper = (cq.Workplane('XY')\n    .circle(handle_diameter/2)\n    .extrude(handle_length + handle_overlap))\nupper = upper.translate((0, outer_diameter/2 + handle_length/2 - handle_overlap/2, height - 25))\n\n# Lower connection\nlower = (cq.Workplane('XY')\n    .circle(handle_diameter/2)\n    .extrude(handle_length + handle_overlap))\nlower = lower.translate((0, outer_diameter/2 + handle_length/2 - handle_overlap/2, 25))\n\n# Connecting bar\nbar = (cq.Workplane('XY')\n    .box(handle_diameter, handle_length, height - 50, centered=True))\nbar = bar.translate((0, outer_diameter/2 + handle_length/2 - handle_overlap/2, height/2))\n\nhandle = upper.union(lower).union(bar)\nhandle = handle.rotate((0, 0, 0), (0, 0, 1), 90)\n\n# Union with body - handle overlaps with outer wall by handle_overlap\nmug = body.union(handle)\n\nresult = mug",
+  "parameters": {
+    "outer_diameter": {"type": "float", "default": 80.0, "min": 50, "max": 120, "step": 5, "description": "Mug outer diameter mm"},
+    "inner_diameter": {"type": "float", "default": 70.0, "min": 40, "max": 110, "step": 5, "description": "Inner diameter mm"},
+    "height": {"type": "float", "default": 90.0, "min": 60, "max": 150, "step": 5, "description": "Mug height mm"},
+    "handle_length": {"type": "float", "default": 40.0, "min": 20, "max": 70, "step": 5, "description": "Handle length mm"},
+    "handle_overlap": {"type": "float", "default": 5.0, "min": 1, "max": 15, "step": 1, "description": "Handle-body overlap mm (prevents union errors)"}
+  },
+  "description": "A mug with hollow cylindrical body and C-shaped handle overlapping with body wall",
+  "tags": ["mug", "kitchen", "container"]
+}
+
+---
+EXAMPLE 14 – NEGATIVE: Complex operations that commonly fail (what NOT to do)
+---
+User: "A spoon bowl using revolve and ellipseArc"
+Assistant (WRONG):
+{
+  "code": "import cadquery as cq\n\n# WRONG: Using revolve and ellipseArc for a spoon bowl\n# These operations often cause WIRE_TOPOLOGY errors in CadQuery 2.7.0\nprofile = (cq.Workplane('XZ')\n    .ellipseArc(30, 10, 0, 180)\n    .close())\nbowl = profile.revolve(360, (0, 0, 0), (0, 0, 1))\n\n# WRONG: Using shell() on non-manifold geometry\nbody = cq.Workplane('XY').box(100, 50, 5)\nhollow = body.shell(-2)\n\nresult = bowl.union(hollow)",
+  "parameters": {},
+  "description": "WRONG: Shows operations that commonly fail - revolve, ellipseArc, shell",
+  "tags": ["negative", "avoid"]
+}
+CORRECTED:
+{
+  "code": "import cadquery as cq\n\n# CORRECT: Simple box + ellipse cut for bowl\nbowl = (cq.Workplane('XY')\n    .box(60, 50, 3, centered=True))\n\n# Depression using simple ellipse cut\ndepression = (cq.Workplane('XY')\n    .workplane(offset=3/2)\n    .ellipse(25, 20)\n    .extrude(-8))\n\nbowl = bowl.cut(depression)\nresult = bowl",
+  "parameters": {
+    "bowl_length": {"type": "float", "default": 60.0, "min": 30, "max": 100, "step": 5, "description": "Bowl length mm"},
+    "bowl_width": {"type": "float", "default": 50.0, "min": 30, "max": 80, "step": 5, "description": "Bowl width mm"},
+    "depth": {"type": "float", "default": 8.0, "min": 3, "max": 15, "step": 1, "description": "Depression depth mm"}
+  },
+  "description": "CORRECT: Simple box with ellipse cut - reliable and fast",
+  "tags": ["spoon", "bowl", "correct"]
+}
+
+---
+EXAMPLE 15 – Screw with thread (helix approximation using stacked cylinders)
+---
+User: "A screw with M10 threads and a hex head, 50mm long"
+Assistant:
+{
+  "code": "import cadquery as cq\nimport math\n\n# Parameters\nshaft_diameter = 10.0\nshaft_length = 50.0\nhead_diameter = 16.0\nhead_height = 7.0\nthread_diameter = 11.0\nthread_pitch = 2.0\nthread_turns = 10\n\n# Shank cylinder\nshank = (cq.Workplane('XY')\n    .circle(shaft_diameter/2)\n    .extrude(shaft_length))\n\n# Hex head\nhead = (cq.Workplane('XY')\n    .polygon(6, head_diameter, circumscribed=True)\n    .extrude(head_height))\nhead = head.translate((0, 0, shaft_length))\n\n# Thread: stacked cylinders with slight offset to create helix appearance\nthread = None\nfor i in range(thread_turns):\n    z = i * thread_pitch\n    turn = (cq.Workplane('XY')\n        .circle(thread_diameter/2)\n        .extrude(thread_pitch * 0.9))\n    turn = turn.translate((0, 0, z))\n    if thread is None:\n        thread = turn\n    else:\n        thread = thread.union(turn)\n\n# Combine all parts\nscrew = shank.union(head)\nif thread:\n    screw = screw.union(thread)\n\nresult = screw",
+  "parameters": {
+    "shaft_length": {"type": "float", "default": 50.0, "min": 20, "max": 100, "step": 5, "description": "Shank length mm"},
+    "shaft_diameter": {"type": "float", "default": 10.0, "min": 3, "max": 20, "step": 0.5, "description": "Shank diameter mm"},
+    "head_diameter": {"type": "float", "default": 16.0, "min": 5, "max": 30, "step": 1, "description": "Hex head diameter mm"},
+    "thread_diameter": {"type": "float", "default": 11.0, "min": 5, "max": 25, "step": 0.5, "description": "Thread outer diameter mm"},
+    "thread_pitch": {"type": "float", "default": 2.0, "min": 1, "max": 5, "step": 0.5, "description": "Thread pitch mm"}
+  },
+  "description": "A screw with hex head and simplified thread from stacked cylinders",
+  "tags": ["screw", "fastener", "thread"]
+}
+
+---
+EXAMPLE 16 – Connecting Rod with overlapping bridge (two cylindrical ends + rectangular bridge overlapping both)
+---
+User: "A connecting rod with two ends and a bridge, 150mm center-to-center"
+Assistant:
+{
+  "code": "import cadquery as cq\n\n# Parameters\nbig_end_diameter = 40.0\nsmall_end_diameter = 20.0\nbig_end_thickness = 15.0\nsmall_end_thickness = 12.0\nrod_length = 150.0\nrod_width = 15.0\nrod_thickness = 10.0\nbore_diameter = 12.0\noverlap = 2.0\n\n# Big end (crank side): cylinder with hole\nbig_end = (cq.Workplane('XY')\n    .circle(big_end_diameter/2)\n    .extrude(big_end_thickness))\n\nbig_end_bore = (cq.Workplane('XY')\n    .circle(bore_diameter/2)\n    .extrude(big_end_thickness + 2))\nbig_end_bore = big_end_bore.translate((0, 0, -1))\n\nbig_end = big_end.cut(big_end_bore)\nbig_end = big_end.translate((-rod_length/2 + overlap, 0, 0))\n\n# Small end (piston side): cylinder with hole\nsmall_end = (cq.Workplane('XY')\n    .circle(small_end_diameter/2)\n    .extrude(small_end_thickness))\n\nsmall_end_bore = (cq.Workplane('XY')\n    .circle(bore_diameter/2)\n    .extrude(small_end_thickness + 2))\nsmall_end_bore = small_end_bore.translate((0, 0, -1))\n\nsmall_end = small_end.cut(small_end_bore)\nsmall_end = small_end.translate((rod_length/2 - overlap, 0, 0))\n\n# Connecting rod body: rectangular bridge overlapping both ends by 'overlap'\nrod = (cq.Workplane('XY')\n    .box(rod_length + overlap*2, rod_width, rod_thickness, centered=True))\n\n# Combine all parts with guaranteed overlaps\nconnecting_rod = big_end.union(small_end).union(rod)\n\nresult = connecting_rod",
+  "parameters": {
+    "rod_length": {"type": "float", "default": 150.0, "min": 50, "max": 300, "step": 5, "description": "Center-to-center distance mm"},
+    "big_end_diameter": {"type": "float", "default": 40.0, "min": 20, "max": 80, "step": 5, "description": "Big end diameter mm"},
+    "small_end_diameter": {"type": "float", "default": 20.0, "min": 10, "max": 50, "step": 5, "description": "Small end diameter mm"},
+    "bore_diameter": {"type": "float", "default": 12.0, "min": 5, "max": 30, "step": 0.5, "description": "Bore hole diameter mm"},
+    "overlap": {"type": "float", "default": 2.0, "min": 1, "max": 10, "step": 1, "description": "Bridge overlap mm (prevents union errors)"}
+  },
+  "description": "A connecting rod with overlapping cylindrical ends and rectangular bridge",
+  "tags": ["connecting_rod", "engine", "mechanical"]
+}

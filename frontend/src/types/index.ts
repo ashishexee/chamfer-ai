@@ -42,6 +42,51 @@ export interface WorkflowStep {
   timestamp?: number;
 }
 
+export interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+  reasoning?: string;
+  provider?: string;
+  error?: string;
+  clarification?: ClarificationOption[];
+  clarificationAnswers?: ClarificationAnswer[];
+  teeProof?: TEEProof;
+  steps?: WorkflowStep[];
+  bestEffort?: boolean;
+  images?: string[];
+  sessionId?: string;
+  editMode?: boolean;
+  warning?: string;
+  inspection?: InspectionData;
+  snapshots?: Record<string, string>;
+  dimViews?: Record<string, string>;
+  visionVerified?: boolean;
+  visionFeedback?: string;
+  timestamp?: number;
+}
+
+export interface Provider {
+  id: string;
+  name: string;
+  desc: string;
+}
+
+export interface TEEProof {
+  providerAddress: string;
+  chatId: string;
+  signature: string;
+  timestamp: number;
+  verified: boolean;
+}
+
+export interface GenerationResult {
+  code: string;
+  parameters: Record<string, ParameterSchema>;
+  description: string;
+  tags: string[];
+  teeProof?: TEEProof;
+}
+
 export interface InspectionData {
   shape_type?: string;
   face_count?: number;

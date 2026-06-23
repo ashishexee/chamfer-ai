@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, Copy, Check, Eye, AlertTriangle } from 'lucide-react';
+import { User, Copy, Check, Eye, AlertTriangle, Pencil, RotateCcw } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Message } from '@/types';
 import { getProviderDisplayName } from '@/lib/constants';
@@ -11,6 +11,9 @@ import { cn } from '@/lib/utils';
 
 interface MessageBubbleProps {
   message: Message;
+  index: number;
+  onEdit: (index: number) => void;
+  onRetry: (index: number) => void;
 }
 
 function formatTime(ts?: number) {
@@ -18,10 +21,13 @@ function formatTime(ts?: number) {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const isUser = message.role === 'user';
   const isError = !!message.error;
+  const isAssistant = message.role === 'assistant';
+  const hasContent = isAssistant && message.content && !message.clarification;
+  const isBestEffort = message.bestEffort;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
@@ -81,22 +87,54 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           )}
         </div>
 
-        {/* Copy button — assistant messages with content */}
-        {!isUser && !isError && message.content && (
-          <button
-            onClick={handleCopy}
-            className="opacity-0 group-hover:opacity-100 transition-all duration-200 flex h-6 w-6 items-center justify-center rounded-md text-adam-text-tertiary hover:text-adam-text-secondary hover:bg-white/[0.04]"
-            title={copied ? 'Copied' : 'Copy message'}
-          >
-            {copied
-              ? <Check className="h-3 w-3 text-emerald-400" />
-              : <Copy className="h-3 w-3" />}
-          </button>
+        {/* Action buttons */}
+        {hasContent && (
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
+            <button
+              onClick={() => onEdit(index)}
+              className="flex h-6 w-6 items-center justify-center rounded-md text-adam-text-tertiary hover:text-adam-blue hover:bg-adam-blue/10 transition-colors"
+              title="Edit this design"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+            {isBestEffort && (
+              <button
+                onClick={() => onRetry(index)}
+                className="flex h-6 w-6 items-center justify-center rounded-md text-adam-text-tertiary hover:text-yellow-400 hover:bg-yellow-400/10 transition-colors"
+                title="Retry generation"
+              >
+                <RotateCcw className="h-3 w-3" />
+              </button>
+            )}
+            <button
+              onClick={handleCopy}
+              className="flex h-6 w-6 items-center justify-center rounded-md text-adam-text-tertiary hover:text-adam-text-secondary hover:bg-white/[0.04] transition-colors"
+              title={copied ? 'Copied' : 'Copy message'}
+            >
+              {copied
+                ? <Check className="h-3 w-3 text-emerald-400" />
+                : <Copy className="h-3 w-3" />}
+            </button>
+          </div>
         )}
       </div>
 
       {/* Content */}
       <div className="px-3.5 pb-3.5">
+        {/* User images */}
+        {isUser && message.images && message.images.length > 0 && (
+          <div className="flex gap-2 mb-2 overflow-x-auto">
+            {message.images.map((img, i) => (
+              <img
+                key={i}
+                src={img}
+                alt={`Reference ${i + 1}`}
+                className="w-20 h-20 rounded-lg object-cover border border-adam-neutral-700/30"
+              />
+            ))}
+          </div>
+        )}
+
         {(message.clarificationAnswers && message.clarificationAnswers.length > 0) || (message.specifications && message.specifications.length > 0) ? (
           <ClarificationAnswers specifications={message.clarificationAnswers || message.specifications || []} />
         ) : (

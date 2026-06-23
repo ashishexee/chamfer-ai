@@ -33,7 +33,35 @@ export function extractJSONFromResponse(text: string): { data: CadQueryResult | 
     clean = jsonFenceMatch[1].trim();
   }
   
-  // Find the first { and last }
+  // Strategy 1: Try to parse as-is first (sometimes it works)
+  try {
+    const parsed = JSON.parse(clean);
+    if (parsed.code && typeof parsed.code === 'string' && parsed.parameters && typeof parsed.parameters === 'object') {
+      return {
+        data: {
+          code: parsed.code,
+          parameters: parsed.parameters || {},
+          description: parsed.description || '',
+          tags: parsed.tags || [],
+        },
+        error: null,
+      };
+    }
+  } catch {
+    // Continue to strategy 2
+  }
+  
+  // Strategy 2: Extract code block and reconstruct JSON
+  // This is more robust for LLM-generated code with special characters
+  const reconstructed = extractAndReconstructJSON(clean);
+  if (reconstructed) {
+    return {
+      data: reconstructed,
+      error: null,
+    };
+  }
+  
+  // Strategy 3: Find first { and last } and try standard repair
   const firstBrace = clean.indexOf('{');
   const lastBrace = clean.lastIndexOf('}');
   
@@ -72,6 +100,101 @@ export function extractJSONFromResponse(text: string): { data: CadQueryResult | 
     };
   } catch (e) {
     return { data: null, error: `JSON parse error: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/**
+ * Robust extraction: finds the code block by looking for the "parameters" key that follows it,
+ * then reconstructs valid JSON from the parts.
+ */
+function extractAndReconstructJSON(text: string): CadQueryResult | null {
+  try {
+    // Find the code key
+    const codeKeyMatch = text.match(/"code"\s*:\s*/);
+    if (!codeKeyMatch) return null;
+    
+    const codeStart = text.indexOf(codeKeyMatch[0]) + codeKeyMatch[0].length;
+    
+    // Find the parameters key that follows the code
+    const paramsKeyMatch = text.match(/",\s*"parameters"\s*:/);
+    if (!paramsKeyMatch) return null;
+    
+    const codeEnd = text.indexOf(paramsKeyMatch[0], codeStart);
+    if (codeEnd === -1) return null;
+    
+    // Extract the raw code string (between code key and parameters key)
+    // The code starts after the opening quote and ends before the closing quote
+    let rawCode = text.slice(codeStart, codeEnd + 1); // +1 to include the closing quote
+    
+    // Remove surrounding quotes if present
+    if (rawCode.startsWith('"')) rawCode = rawCode.slice(1);
+    if (rawCode.endsWith('"')) rawCode = rawCode.slice(0, -1);
+    
+    // Unescape JSON sequences to get actual code
+    const code = rawCode
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\');
+    
+    // Extract parameters object - find the matching closing brace
+    const paramsStart = text.indexOf(paramsKeyMatch[0]) + paramsKeyMatch[0].length - 1; // -1 to include the {
+    // Find the matching } by counting braces
+    let braceCount = 1;
+    let paramsEnd = paramsStart + 1;
+    while (braceCount > 0 && paramsEnd < text.length) {
+      if (text[paramsEnd] === '{') braceCount++;
+      else if (text[paramsEnd] === '}') braceCount--;
+      else if (text[paramsEnd] === '"') {
+        // Skip string content
+        paramsEnd++;
+        while (paramsEnd < text.length && text[paramsEnd] !== '"') {
+          if (text[paramsEnd] === '\\') paramsEnd++;
+          paramsEnd++;
+        }
+      }
+      paramsEnd++;
+    }
+    
+    const paramsStr = text.slice(paramsStart, paramsEnd);
+    let parameters = {};
+    try {
+      parameters = JSON.parse(paramsStr);
+    } catch {
+      // Try to extract with simple regex if parsing fails
+      const simpleMatch = paramsStr.match(/\{[\s\S]*\}/);
+      if (simpleMatch) {
+        try {
+          parameters = JSON.parse(simpleMatch[0]);
+        } catch {
+          parameters = {};
+        }
+      }
+    }
+    
+    // Extract description
+    const descMatch = text.slice(paramsEnd).match(/"description"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
+    const description = descMatch ? descMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') : '';
+    
+    // Extract tags
+    const tagsMatch = text.slice(paramsEnd).match(/"tags"\s*:\s*(\[[\s\S]*?\])/);
+    let tags: string[] = [];
+    if (tagsMatch) {
+      try {
+        tags = JSON.parse(tagsMatch[1]);
+      } catch {
+        tags = [];
+      }
+    }
+    
+    return {
+      code,
+      parameters,
+      description,
+      tags,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -336,23 +459,61 @@ export interface StreamCallbacks {
   onError: (error: string) => void;
 }
 
+import { buildVisionContent } from './vision';
+import type { SessionMessage } from './session';
+import { truncateHistory, logTokenCounts, getMaxContextTokens } from './context-manager';
+
+export interface GenerateOptions {
+  prompt: string;
+  images?: string[];
+  sessionHistory?: SessionMessage[];
+  previousCode?: string;
+  errorFeedback?: string;
+  providerId?: string;
+  callbacks?: StreamCallbacks;
+}
+
 export async function generateCadQueryCodeStream(
-  prompt: string,
-  history: { role: string; content: string }[] = [],
-  previousCode?: string,
-  errorFeedback?: string,
-  providerId?: string,
-  callbacks?: StreamCallbacks,
+  options: GenerateOptions,
 ): Promise<LLMResult> {
+  const { prompt, images, sessionHistory, previousCode, errorFeedback, providerId, callbacks } = options;
   const provider = config.providers[providerId || '0g'] || config.providers['0g'];
   const llm = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseUrl });
 
-  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+  let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: 'system', content: FINAL_SYSTEM_PROMPT },
   ];
 
-  for (const msg of history) {
-    messages.push({ role: msg.role as 'user' | 'assistant', content: msg.content });
+  // Add session history if available
+  if (sessionHistory && sessionHistory.length > 0) {
+    for (const msg of sessionHistory) {
+      // Build message content with clarification history if present
+      let messageContent = msg.content;
+      if (msg.clarificationHistory && msg.clarificationHistory.answers) {
+        messageContent = `Previous clarification:
+Q: ${msg.clarificationHistory.questions.join('\nQ: ')}
+A: ${msg.clarificationHistory.answers}
+
+${messageContent}`;
+      }
+      
+      if (msg.images && msg.images.length > 0) {
+        // Only user messages can have image content in OpenAI's API
+        if (msg.role === 'user') {
+          messages.push({
+            role: 'user',
+            content: buildVisionContent(messageContent, msg.images),
+          } as OpenAI.Chat.Completions.ChatCompletionMessageParam);
+        } else {
+          messages.push({ role: 'assistant', content: messageContent });
+        }
+      } else if (msg.role === 'system') {
+        // Skip system clarification tracking messages
+        continue;
+      } else {
+        messages.push({ role: msg.role as 'user' | 'assistant', content: messageContent });
+      }
+    }
   }
 
   if (previousCode && errorFeedback) {
@@ -360,12 +521,33 @@ export async function generateCadQueryCodeStream(
     messages.push({ role: 'assistant', content: JSON.stringify({ code: previousCode }) });
     // Inject the error as user feedback
     messages.push({ role: 'user', content: errorFeedback });
+  }
+
+  // Add current user message with images if present
+  if (images && images.length > 0) {
+    messages.push({
+      role: 'user',
+      content: buildVisionContent(prompt, images),
+    });
   } else {
     messages.push({ role: 'user', content: prompt });
   }
 
+  // Apply context truncation
+  const maxTokens = provider.maxContextTokens || getMaxContextTokens(providerId || '0g');
+  const originalCount = messages.length;
+  messages = truncateHistory(messages, {
+    systemPrompt: FINAL_SYSTEM_PROMPT,
+    maxTokens,
+    preserveLastNTurns: 2,
+  });
+  if (messages.length < originalCount) {
+    console.log(`[LLM] Context truncated: ${originalCount} → ${messages.length} messages (max ${maxTokens} tokens)`);
+  }
+  logTokenCounts(messages, `generate-${providerId || '0g'}`);
+
   const isZeroG = providerId === '0g';
-  console.log(`[LLM] Provider: ${providerId || '0g'}, Model: ${provider.model}, Streaming: true`);
+  console.log(`[LLM] Provider: ${providerId || '0g'}, Model: ${provider.model}, Streaming: true, Images: ${images?.length || 0}`);
   if (errorFeedback) console.log(`[LLM] Retry with feedback: ${errorFeedback.slice(0, 100)}...`);
 
   let fullContent = '';
@@ -517,13 +699,16 @@ Respond with:
     const responseText = response.choices[0]?.message?.content || '';
     console.log(`[VISION] Response: ${responseText.slice(0, 200)}`);
 
-    if (responseText.toUpperCase().includes('PASS')) {
-      return { needsFix: false, feedback: responseText };
-    }
-
-    if (responseText.toUpperCase().includes('FIX')) {
+    // Check for FIX first (more specific indicator of issues)
+    // Use stricter check: must start with FIX or have "FIX:" in the text
+    if (/^\s*FIX\b/i.test(responseText) || /FIX:\s*/i.test(responseText)) {
       const fixMatch = responseText.match(/FIX:\s*(.*)/i);
       return { needsFix: true, feedback: fixMatch?.[1]?.trim() || responseText };
+    }
+
+    // Only PASS if no FIX found and text explicitly says PASS
+    if (/^\s*PASS\b/i.test(responseText)) {
+      return { needsFix: false, feedback: responseText };
     }
 
     return { needsFix: false, feedback: responseText };
@@ -610,21 +795,27 @@ export function extractClarification(text: string): ClarificationResult | null {
 export async function checkClarification(
   prompt: string,
   providerId?: string,
+  images?: string[],
 ): Promise<ClarificationResult> {
   // Use the configured clarification provider, or default to 'mimo' (mimo-v2.5) which was proven to work
   const clarifierProviderId = process.env.CLARIFICATION_PROVIDER || 'mimo';
   const provider = config.providers[clarifierProviderId] || config.providers[providerId || '0g'] || config.providers['groq'];
 
-  console.log(`[CLARIFIER] Checking prompt: "${prompt.slice(0, 80)}..." using ${clarifierProviderId}`);
+  console.log(`[CLARIFIER] Checking prompt: "${prompt.slice(0, 80)}..." using ${clarifierProviderId}, Images: ${images?.length || 0}`);
 
   const llm = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseUrl });
 
   try {
+    let userContent: any = `Analyze this CAD generation prompt:\n\n${prompt}`;
+    if (images && images.length > 0 && provider.supportsVision) {
+      userContent = buildVisionContent(`Analyze this CAD generation prompt with reference images:\n\n${prompt}`, images);
+    }
+
     const response = await llm.chat.completions.create({
       model: provider.model,
       messages: [
         { role: 'system', content: CLARIFIER_PROMPT },
-        { role: 'user', content: `Analyze this CAD generation prompt:\n\n${prompt}` },
+        { role: 'user', content: userContent },
       ],
       temperature: 0.1,
     });

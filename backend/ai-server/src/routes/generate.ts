@@ -12,6 +12,15 @@ import {
 import { config } from '../config';
 import { RETRY_TEMPLATE } from '../prompts/loader';
 import { expandPrompt } from '../services/prompt-expander';
+import { checkVisionSupport } from '../services/vision';
+import {
+  createSession,
+  getSession,
+  addMessageToSession,
+  updateSession,
+  deleteSession,
+} from '../services/session';
+import type { SessionMessage } from '../services/session';
 
 const MAX_RETRIES = 3;
 
@@ -68,25 +77,47 @@ interface CadResult {
 }
 
 export async function handleGenerate(req: Request, res: Response): Promise<void> {
-  const { prompt, history, provider, enableVision, answers, clarificationProvider } = req.body as {
+  const { prompt, history, provider, enableVision, answers, clarificationProvider, images, sessionId, editMode } = req.body as {
     prompt?: string;
     history?: { role: string; content: string }[];
     provider?: string;
     enableVision?: boolean;
     answers?: string;
     clarificationProvider?: string;
+    images?: string[];
+    sessionId?: string;
+    editMode?: boolean;
   };
 
   if (!prompt) { res.status(400).json({ error: 'Prompt is required' }); return; }
   if (provider && !config.providers[provider]) { res.status(400).json({ error: `Unknown provider: ${provider}` }); return; }
 
+  const providerId = provider || 'mimo-pro';
+  const providerConfig = config.providers[providerId] || config.providers['mimo-pro'];
+  const supportsVision = providerConfig.supportsVision && enableVision === true;
+
+  // Validate images if provided
+  if (images && images.length > 0) {
+    const visionCheck = checkVisionSupport(images, providerConfig.supportsVision);
+    if (!visionCheck.valid) {
+      res.status(400).json({ error: visionCheck.error });
+      return;
+    }
+  }
+
+  // Get or create session
+  let session = sessionId ? getSession(sessionId) : undefined;
+  if (!session && sessionId) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  if (!session) {
+    session = createSession();
+  }
+
   // Expand vague prompts with default dimensions
   const expandedPrompt = expandPrompt(prompt);
   let effectivePrompt = expandedPrompt !== prompt ? expandedPrompt : prompt;
-
-  const providerId = provider || '0g';
-  const providerConfig = config.providers[providerId] || config.providers['0g'];
-  const supportsVision = providerConfig.supportsVision && enableVision === true;
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -114,21 +145,44 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
     sendSSE(res, 'step', { id, status: 'error', detail });
   };
 
-  // ── STEP 0: Clarification (skip if user already provided answers) ──
-  if (answers) {
-    // User answered clarifying questions — prepend answers to the prompt
+  // ── STEP 0: Clarification (skip if user already provided answers, edit mode, or follow-up in existing session) ──
+  // Check if this is a follow-up in an existing session (has previous messages)
+  const isFollowUp = session.messages.length > 0;
+  
+  if (editMode) {
+    console.log(`[ROUTE] Edit mode: skipping clarifier, using previous code context`);
+    step('clarify', 'help-circle', 'Edit mode', 'Using previous design context');
+    stepDone('clarify', 'Proceeding with edit — previous code loaded');
+  } else if (answers) {
     effectivePrompt = `${answers}\n\n${effectivePrompt}`;
     console.log(`[ROUTE] Using clarified prompt: "${effectivePrompt.slice(0, 100)}..."`);
     step('clarify', 'help-circle', 'Clarification received', 'Using your answers to refine the prompt');
     stepDone('clarify');
+  } else if (isFollowUp) {
+    // Skip clarification for follow-up messages in existing sessions
+    // The context from previous messages is sufficient
+    console.log(`[ROUTE] Follow-up in existing session (${session.messages.length} messages), skipping clarifier`);
+    step('clarify', 'help-circle', 'Context preserved', 'Using previous conversation context');
+    stepDone('clarify', 'Proceeding with full context');
   } else {
-    // Check if clarification is needed
     step('clarify', 'help-circle', 'Checking specifications', 'Analyzing if your request needs more details');
     try {
-      const clarification = await checkClarification(effectivePrompt, clarificationProvider || providerId);
+      const clarification = await checkClarification(effectivePrompt, clarificationProvider || providerId, images);
       if (!clarification.isClear && clarification.questions.length > 0) {
         console.log(`[ROUTE] Clarification needed: ${clarification.questions.length} questions`);
         stepDone('clarify', `${clarification.questions.length} questions to refine your request`);
+        
+        // Store clarification questions in session for context tracking
+        addMessageToSession(session.id, {
+          role: 'system',
+          content: `Clarification asked: ${clarification.questions.map(q => q.question).join(', ')}`,
+          clarificationHistory: {
+            questions: clarification.questions.map(q => q.question),
+            answers: '',
+            timestamp: Date.now(),
+          },
+        });
+        
         sendSSE(res, 'clarify', {
           questions: clarification.questions,
           originalPrompt: prompt,
@@ -137,7 +191,6 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         res.end();
         return;
       }
-      // Prompt is clear — use the standardized version
       effectivePrompt = clarification.standardizedPrompt || effectivePrompt;
       stepDone('clarify', 'Request is clear — proceeding with generation');
     } catch (err) {
@@ -146,7 +199,39 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
     }
   }
 
-  // Initial analysis step — show expanded prompt if applicable
+  // Add user message to session with clarification context if present
+  const userMessage: any = {
+    role: 'user',
+    content: effectivePrompt,
+    images,
+  };
+  
+  // If answers provided, store the clarification Q&A in the message
+  if (answers) {
+    // Find the last clarification history from session
+    const lastClarification = [...session.messages].reverse().find(m => m.clarificationHistory);
+    if (lastClarification?.clarificationHistory) {
+      userMessage.clarificationHistory = {
+        ...lastClarification.clarificationHistory,
+        answers: answers,
+        timestamp: Date.now(),
+      };
+    }
+  }
+  
+  addMessageToSession(session.id, userMessage);
+
+  // Build session history for LLM
+  const sessionHistory: SessionMessage[] = session.messages;
+
+  // If edit mode, include previous code context
+  let previousCodeForRetry: string | undefined;
+  if (editMode && session.currentCode) {
+    previousCodeForRetry = session.currentCode;
+    console.log(`[ROUTE] Edit mode: including previous code (${previousCodeForRetry.length} chars)`);
+  }
+
+  // Initial analysis step
   const analyzeDetail = expandedPrompt !== prompt
     ? `Expanded "${prompt}" → "${expandedPrompt}"`
     : 'Extracting dimensions, features, and parameters from your prompt';
@@ -156,31 +241,35 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
     console.log(`[ROUTE] Attempt ${attempt + 1}/${MAX_RETRIES}`);
     sendSSE(res, 'attempt', { attempt: attempt + 1, maxRetries: MAX_RETRIES });
 
-    // Build error feedback for retry using template
+    // Build error feedback for retry
     let errorFeedback: string | undefined;
     if (attempt > 0 && lastError) {
       const { category, hint } = classifyError(lastError);
       lastErrorCategory = category;
-      // Use the surgical retry template
       errorFeedback = RETRY_TEMPLATE
         .replace('{error_message}', lastError)
         .replace('{code}', code);
       console.log(`[ROUTE] Retry ${attempt}: ${category} error`);
+    } else if (editMode && previousCodeForRetry && attempt === 0) {
+      // Edit mode: include previous code as context for the first attempt
+      errorFeedback = `Previous code:\n\n\`\`\`python\n${previousCodeForRetry}\n\`\`\`\n\nThe user wants to modify this design. Please update the code according to the new request: "${effectivePrompt}". Return the complete updated JSON with all fields (code, parameters, description, tags).`;
     }
 
     try {
-      const result = await generateCadQueryCodeStream(
-        effectivePrompt, history || [],
-        attempt > 0 ? code : undefined,
+      const result = await generateCadQueryCodeStream({
+        prompt: effectivePrompt,
+        images,
+        sessionHistory,
+        previousCode: attempt > 0 ? code : (editMode ? previousCodeForRetry : undefined),
         errorFeedback,
         providerId,
-        attempt === 0 ? {
+        callbacks: attempt === 0 ? {
           onReasoning: (chunk) => sendSSE(res, 'reasoning', { chunk }),
           onContent: () => {},
           onDone: (r) => sendSSE(res, 'llm-done', { codeLength: r.code.length }),
           onError: (err) => sendSSE(res, 'llm-error', { error: err }),
         } : undefined,
-      );
+      });
 
       code = result.code;
       parameters = result.parameters;
@@ -326,12 +415,28 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       }
 
       // ── SUCCESS ──
+      // Update session with new code and parameters
+      updateSession(session.id, {
+        currentCode: code,
+        currentParameters: parameters,
+        currentDescription: description,
+        currentTags: tags,
+      });
+      addMessageToSession(session.id, {
+        role: 'assistant',
+        content: rawResponse,
+        code,
+        parameters,
+        inspection: cadResult.inspection,
+      });
+
       step('deliver', 'package-check', 'Preparing deliverables', 'Packaging STEP, STL, GLB, and snapshots for download');
       console.log(`[ROUTE] SUCCESS on attempt ${attempt + 1}${supportsVision ? ' (vision-verified)' : ''}`);
       stepDone('deliver', 'Files packaged and ready');
 
       sendSSE(res, 'done', {
         success: true,
+        sessionId: session.id,
         code,
         parameters,
         description,
@@ -395,10 +500,27 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       }
     } catch {}
 
+    // Update session even for best-effort
+    updateSession(session.id, {
+      currentCode: code,
+      currentParameters: parameters,
+      currentDescription: description,
+      currentTags: tags,
+    });
+    addMessageToSession(session.id, {
+      role: 'assistant',
+      content: rawResponse,
+      code,
+      parameters,
+      error: lastError,
+      errorCategory: lastErrorCategory,
+    });
+
     stepDone('deliver', 'Best-effort deliverables packaged');
 
     sendSSE(res, 'done', {
       success: true,
+      sessionId: session.id,
       code,
       parameters,
       description,
@@ -458,9 +580,70 @@ export async function handleUpdateParams(req: Request, res: Response): Promise<v
 export function handleListProviders(_req: Request, res: Response): void {
   const providers = Object.entries(config.providers).map(([id, p]) => ({
     id,
-    name: id,
+    name: p.name || id,
+    model: p.model,
     hasKey: !!p.apiKey,
     supportsVision: p.supportsVision,
+    maxContextTokens: p.maxContextTokens,
   }));
   res.json({ providers });
+}
+
+// ─── Session Management Endpoints ──────────────────────────────────────
+
+export function handleGetSession(req: Request, res: Response): void {
+  const { id } = req.params;
+  const session = getSession(id);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  res.json({
+    id: session.id,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    messages: session.messages,
+    currentCode: session.currentCode,
+    currentDescription: session.currentDescription,
+    currentTags: session.currentTags,
+  });
+}
+
+export function handleDeleteSession(req: Request, res: Response): void {
+  const { id } = req.params;
+  const deleted = deleteSession(id);
+  if (deleted) {
+    res.json({ success: true, message: 'Session deleted' });
+  } else {
+    res.status(404).json({ error: 'Session not found' });
+  }
+}
+
+// ─── Standalone Clarification Endpoint ─────────────────────────────────
+
+export async function handleClarify(req: Request, res: Response): Promise<void> {
+  const { prompt, provider, images } = req.body as {
+    prompt?: string;
+    provider?: string;
+    images?: string[];
+  };
+
+  if (!prompt) { res.status(400).json({ error: 'Prompt is required' }); return; }
+  const providerId = provider || 'mimo';
+
+  try {
+    console.log(`[CLARIFY] Checking: "${prompt}" with provider: ${providerId}`);
+    const clarification = await checkClarification(prompt, providerId, images);
+    console.log(`[CLARIFY] Result: is_clear=${clarification.isClear}, questions=${clarification.questions.length}`);
+    res.json({
+      isClear: clarification.isClear,
+      questions: clarification.questions,
+      expanded: clarification.standardizedPrompt,
+      needsClarification: !clarification.isClear && clarification.questions.length > 0,
+    });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`[CLARIFY] Exception: ${msg}`);
+    res.status(500).json({ error: msg });
+  }
 }

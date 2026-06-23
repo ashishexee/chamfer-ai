@@ -1,6 +1,8 @@
-import { ArrowUp, Brain } from 'lucide-react';
+import { ArrowUp, Brain, ImagePlus, X } from 'lucide-react';
+import { useState, useRef, useCallback } from 'react';
 import { AnimatedPlaceholder } from './AnimatedPlaceholder';
 import { ProviderSelector } from '@/components/layout/ProviderSelector';
+import { fileToBase64, validateImage, compressImage } from '@/lib/imageUtils';
 import { cn } from '@/lib/utils';
 
 interface ChatInputProps {
@@ -16,14 +18,55 @@ interface ChatInputProps {
   reasoningEnabled: boolean;
   setReasoningEnabled: (v: boolean) => void;
   showAnimatedPlaceholder?: boolean;
+  images: string[];
+  onImagesChange: (images: string[]) => void;
+  providerSupportsVision: boolean;
   isConnected?: boolean;
 }
 
 export function ChatInput({
   prompt, setPrompt, onSubmit, isGenerating, isFocused, setIsFocused,
   provider, setProvider, placeholder, reasoningEnabled, setReasoningEnabled,
-  showAnimatedPlaceholder, isConnected = true,
+  showAnimatedPlaceholder, images, onImagesChange,
+  providerSupportsVision, isConnected = true,
 }: ChatInputProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newImages: string[] = [...images];
+    setImageError(null);
+
+    for (const file of Array.from(files)) {
+      const validation = validateImage(file);
+      if (!validation.valid) {
+        setImageError(validation.error);
+        continue;
+      }
+
+      try {
+        let dataUrl = await fileToBase64(file);
+        // Compress if large (base64 ~4/3 of binary, so 8MB base64 ≈ 6MB binary)
+        if (dataUrl.length > 8 * 1024 * 1024) {
+          dataUrl = await compressImage(dataUrl, 1024);
+        }
+        newImages.push(dataUrl);
+      } catch (err) {
+        setImageError('Failed to process image');
+      }
+    }
+
+    onImagesChange(newImages);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [images, onImagesChange]);
+
+  const removeImage = useCallback((index: number) => {
+    onImagesChange(images.filter((_, i) => i !== index));
+  }, [images, onImagesChange]);
+
   return (
     <div className={cn(
       'relative rounded-2xl border transition-all duration-300 bg-adam-background-2/80 backdrop-blur-sm',
@@ -44,9 +87,58 @@ export function ChatInput({
         onChange={e => setPrompt(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(); } }}
       />
+
+      {/* Image previews */}
+      {images.length > 0 && (
+        <div className="flex gap-2 px-4 pb-2 overflow-x-auto">
+          {images.map((img, i) => (
+            <div key={i} className="relative flex-shrink-0 group">
+              <img
+                src={img}
+                alt={`Reference ${i + 1}`}
+                className="w-16 h-16 rounded-lg object-cover border border-adam-neutral-700/50"
+              />
+              <button
+                onClick={() => removeImage(i)}
+                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-adam-neutral-800 text-adam-text-tertiary hover:text-red-400 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {imageError && (
+        <div className="px-4 pb-2 text-[11px] text-red-400/90">{imageError}</div>
+      )}
+
       <div className="flex items-center justify-between px-3 pb-2.5">
         <div className="flex items-center gap-2 flex-1 max-w-[300px]">
-          <ProviderSelector selected={provider} onSelect={setProvider} />
+          <ProviderSelector selected={provider} onSelect={setProvider} requireVision={images.length > 0} />
+          {providerSupportsVision && (
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className={cn(
+                'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] transition-all',
+                images.length > 0
+                  ? 'bg-adam-blue/15 text-adam-blue ring-1 ring-adam-blue/15'
+                  : 'bg-adam-neutral-800/60 text-adam-text-tertiary hover:bg-adam-neutral-700/60 hover:text-adam-text-secondary'
+              )}
+              title="Upload reference images"
+            >
+              <ImagePlus className="w-3 h-3" />
+              {images.length > 0 && <span className="text-[10px]">{images.length}</span>}
+            </button>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+          />
         </div>
         <div className="flex items-center gap-1.5">
           <button
@@ -64,10 +156,10 @@ export function ChatInput({
           </button>
           <button
             onClick={() => onSubmit()}
-            disabled={!isConnected || isGenerating || !prompt.trim()}
+            disabled={!isConnected || isGenerating || (!prompt.trim() && images.length === 0)}
             className={cn(
               'flex h-8 w-8 items-center justify-center rounded-lg transition-all',
-              prompt.trim() && !isGenerating && isConnected
+              (prompt.trim() || images.length > 0) && !isGenerating && isConnected
                 ? 'bg-adam-blue text-white hover:bg-adam-blue/90 shadow-[0_2px_8px_rgba(0,166,255,0.25)]'
                 : 'bg-adam-neutral-800/60 text-adam-text-tertiary cursor-not-allowed'
             )}

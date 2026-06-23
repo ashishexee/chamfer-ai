@@ -58,11 +58,14 @@ Example parameter:
 11. All dimensions are in millimeters
 
 ## IMAGE HANDLING
-When an image is provided:
-1. Silently analyze the image to identify the object type, approximate dimensions, and key features
-2. Estimate reasonable dimensions in millimeters
-3. Generate parametric code that captures the main geometry
-4. Include the image interpretation in the "description" field
+When one or more images are provided as references:
+1. Analyze the images to identify the object type, approximate dimensions, and key features
+2. Estimate reasonable dimensions in millimeters based on visible proportions and typical sizes
+3. Identify geometric features: holes, fillets, chamfers, extrusions, cuts, threads, etc. (use simple extrusions, not revolve or shell)
+4. Generate parametric code that captures the main geometry topology visible in the images
+5. Include the image interpretation in the "description" field
+6. If dimensions are unclear from the image, use reasonable defaults and parametrize them for user adjustment
+7. Focus on reproducing the visible shape, proportions, and key functional features
 
 ## SELF-CORRECTION PROTOCOL
 If you receive an error message from a previous attempt:
@@ -70,6 +73,24 @@ If you receive an error message from a previous attempt:
 2. Do NOT rewrite the entire model unless absolutely necessary
 3. Return the complete JSON object again with the corrected code
 4. Do NOT explain what you fixed — just output the corrected JSON
+
+## ORGANIC AND COMPLEX SHAPE GUIDE
+For spoons, hammers, mugs, handles, bowls, and curved parts:
+- Use simple boxes (.box()) and cylinders (.circle().extrude()) as building blocks
+- Position parts with .translate() and .rotate() then union them with .union()
+- NEVER use .revolve(), .ellipseArc(), .shell(), or .sweep() — these cause topology errors
+- Example: a spoon = handle (box) + bowl (box with ellipse cut), unioned together
+- Example: a mug = hollow cylinder (outer - inner cut) + handle (cylinders + box, rotated)
+- Keep boolean operations simple: .union() for combining, .cut() for holes
+
+## BOOLEAN UNION OVERLAP RULE (CRITICAL)
+When using .union() to combine parts (e.g., handle + bowl):
+- The parts MUST overlap by at least 1mm in all directions
+- If parts don't overlap, add a small connector piece (e.g., small box or cylinder between them)
+- WRONG: handle at (0,0,0) and bowl at (100,0,0) with no overlap → union fails
+- CORRECT: handle ends at x=50, bowl starts at x=49 → 1mm overlap → union succeeds
+- CORRECT: add connector = cq.Workplane('XY').box(10, 10, 10).translate((50, 0, 0)) → bridge between parts
+- This prevents WIRE_TOPOLOGY and BRep_API errors on boolean operations
 
 ## COMMON PITFALLS TO AVOID
 - NEVER use cq.math — use Python's math module: math.sin, math.cos, math.radians
