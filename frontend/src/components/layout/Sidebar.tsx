@@ -281,117 +281,109 @@ export function Sidebar({
           )}
         </div>
 
-        {/* Bottom Wallet Section — both states always rendered, crossfaded */}
-        <div className="relative py-4 transition-all duration-300 ease-in-out" style={{ minHeight: '64px' }}>
-          {/* Expanded wallet */}
-          <div
-            className={`absolute inset-x-0 px-4 transition-opacity duration-200 ${
-              isOpen ? 'opacity-100 delay-100' : 'opacity-0 pointer-events-none'
-            }`}
-          >
-            {isConnected && walletAddress ? (
-              <div className="flex items-center justify-between rounded-xl p-2 transition-colors duration-200 hover:bg-adam-neutral-950 group">
-                <div className="flex items-center space-x-3 min-w-0">
-                  <WalletAvatar address={walletAddress} size={30} />
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-sm font-medium text-adam-text-primary truncate">
-                      {truncateAddress(walletAddress)}
-                    </span>
-                    <span className="text-xs text-adam-text-tertiary">
-                      Connected
-                    </span>
+        {/* Bottom Wallet Section — pinned to bottom with separator */}
+        <div className="mt-auto border-t border-white/[0.04]">
+          {isOpen ? (
+            <div className="px-4 py-4">
+              {isConnected && walletAddress ? (
+                <div className="flex items-center justify-between rounded-xl p-2 transition-colors duration-200 hover:bg-adam-neutral-950 group">
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <WalletAvatar address={walletAddress} size={30} />
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-sm font-medium text-adam-text-primary truncate">
+                        {truncateAddress(walletAddress)}
+                      </span>
+                      <span className="text-xs text-adam-text-tertiary">
+                        Connected
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <button
+                      onClick={handleCopy}
+                      title={copied ? "Copied address" : "Copy address"}
+                      className="p-1 rounded hover:bg-white/[0.06] text-adam-text-tertiary hover:text-adam-text-secondary active:scale-95 transition-all"
+                    >
+                      {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                    </button>
+                    {onDisconnect && (
+                      <button
+                        onClick={onDisconnect}
+                        title="Disconnect wallet"
+                        className="p-1 rounded hover:bg-red-500/[0.08] text-adam-text-tertiary hover:text-red-400 active:scale-95 transition-all"
+                      >
+                        <LogOut className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              ) : (
+                <div className="p-3.5 rounded-xl bg-[#212121] border border-white/[0.05] shadow-lg flex flex-col items-center text-center">
+                  <div className="h-8 w-8 rounded-lg bg-adam-blue/10 flex items-center justify-center text-adam-blue mb-2 shadow-[0_0_12px_rgba(0,166,255,0.05)]">
+                    <Wallet className="h-4.5 w-4.5" />
+                  </div>
+                  <span className="text-[12px] font-semibold text-adam-text-primary mb-0.5 whitespace-nowrap">Wallet Not Connected</span>
+                  <p className="text-[10px] text-adam-text-secondary/70 mb-3 leading-relaxed max-w-[170px]">
+                    Connect your wallet to start creating and saving projects.
+                  </p>
                   <button
-                    onClick={handleCopy}
-                    title={copied ? "Copied address" : "Copy address"}
-                    className="p-1 rounded hover:bg-white/[0.06] text-adam-text-tertiary hover:text-adam-text-secondary active:scale-95 transition-all"
+                    onClick={onConnect}
+                    disabled={isAuthLoading}
+                    className="w-full flex items-center justify-center gap-2 rounded-[100px] border border-adam-blue bg-adam-bg-dark hover:bg-adam-blue/30 py-2 px-3 text-[12px] font-semibold text-adam-text-primary shadow-[0_0_15px_rgba(0,166,255,0.1)] hover:shadow-[0_0_20px_rgba(0,166,255,0.25)] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 disabled:shadow-none transition-all duration-200 whitespace-nowrap"
                   >
-                    {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                    <Wallet className="h-3.5 w-3.5" />
+                    {isAuthLoading ? "Connecting..." : "Connect Wallet"}
                   </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="px-2 py-4 flex justify-center">
+              {isConnected && walletAddress ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div
+                        className="cursor-pointer transition-all duration-200 group/avatar flex items-center justify-center rounded-md hover:bg-adam-neutral-950 p-1.5"
+                        onClick={onConnect}
+                      >
+                        <WalletAvatar address={walletAddress} size={30} />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="flex flex-col">
+                      <span className="font-semibold">Connected Wallet</span>
+                      <span className="text-xs text-muted-foreground">{truncateAddress(walletAddress)}</span>
+                    </TooltipContent>
+                  </Tooltip>
                   {onDisconnect && (
                     <button
                       onClick={onDisconnect}
                       title="Disconnect wallet"
-                      className="p-1 rounded hover:bg-red-500/[0.08] text-adam-text-tertiary hover:text-red-400 active:scale-95 transition-all"
+                      className="h-7 w-7 flex items-center justify-center rounded-lg text-adam-text-tertiary hover:text-red-400 hover:bg-red-500/[0.08] transition-all duration-200"
                     >
                       <LogOut className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </div>
-              </div>
-            ) : (
-              <div className="p-3.5 rounded-xl bg-[#212121] border border-white/[0.05] shadow-lg flex flex-col items-center text-center">
-                <div className="h-8 w-8 rounded-lg bg-adam-blue/10 flex items-center justify-center text-adam-blue mb-2 shadow-[0_0_12px_rgba(0,166,255,0.05)]">
-                  <Wallet className="h-4.5 w-4.5" />
-                </div>
-                <span className="text-[12px] font-semibold text-adam-text-primary mb-0.5 whitespace-nowrap">Wallet Not Connected</span>
-                <p className="text-[10px] text-adam-text-secondary/70 mb-3 leading-relaxed max-w-[170px]">
-                  Connect your wallet to start creating and saving projects.
-                </p>
-                <button
-                  onClick={onConnect}
-                  disabled={isAuthLoading}
-                  className="w-full flex items-center justify-center gap-2 rounded-[100px] border border-adam-blue bg-adam-bg-dark hover:bg-adam-blue/30 py-2 px-3 text-[12px] font-semibold text-adam-text-primary shadow-[0_0_15px_rgba(0,166,255,0.1)] hover:shadow-[0_0_20px_rgba(0,166,255,0.25)] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 disabled:shadow-none transition-all duration-200 whitespace-nowrap"
-                >
-                  <Wallet className="h-3.5 w-3.5" />
-                  {isAuthLoading ? "Connecting..." : "Connect Wallet"}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Collapsed wallet */}
-          <div
-            className={`absolute inset-x-0 px-2 transition-opacity duration-200 ${
-              isOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'
-            }`}
-          >
-            {isConnected && walletAddress ? (
-              <div className="flex flex-col items-center gap-2">
+              ) : (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div
-                      className="cursor-pointer transition-all duration-200 group/avatar flex items-center justify-center rounded-md hover:bg-adam-neutral-950 p-1.5"
+                    <button
                       onClick={onConnect}
+                      disabled={isAuthLoading}
+                      className="h-[36px] w-[36px] rounded-lg flex items-center justify-center bg-adam-blue/10 hover:bg-adam-blue/20 text-adam-blue border border-adam-blue/20 hover:border-adam-blue/40 shadow-[0_0_10px_rgba(0,166,255,0.05)] hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all duration-200"
                     >
-                      <WalletAvatar address={walletAddress} size={30} />
-                    </div>
+                      <Wallet className="h-4 w-4" />
+                    </button>
                   </TooltipTrigger>
                   <TooltipContent side="right" className="flex flex-col">
-                    <span className="font-semibold">Connected Wallet</span>
-                    <span className="text-xs text-muted-foreground">{truncateAddress(walletAddress)}</span>
+                    <span className="font-semibold">Connect Wallet</span>
+                    <span className="text-xs text-muted-foreground">Sign in to save projects</span>
                   </TooltipContent>
                 </Tooltip>
-                {onDisconnect && (
-                  <button
-                    onClick={onDisconnect}
-                    title="Disconnect wallet"
-                    className="h-7 w-7 flex items-center justify-center rounded-lg text-adam-text-tertiary hover:text-red-400 hover:bg-red-500/[0.08] transition-all duration-200"
-                  >
-                    <LogOut className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={onConnect}
-                    disabled={isAuthLoading}
-                    className="h-[36px] w-[36px] mx-auto rounded-lg flex items-center justify-center bg-adam-blue/10 hover:bg-adam-blue/20 text-adam-blue border border-adam-blue/20 hover:border-adam-blue/40 shadow-[0_0_10px_rgba(0,166,255,0.05)] hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all duration-200"
-                  >
-                    <Wallet className="h-4 w-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="right" className="flex flex-col">
-                  <span className="font-semibold">Connect Wallet</span>
-                  <span className="text-xs text-muted-foreground">Sign in to save projects</span>
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </TooltipProvider>
