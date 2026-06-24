@@ -379,6 +379,7 @@ export function useGeneration(
             visionVerified: finalData.visionVerified,
             visionFeedback: visionFeedback || undefined,
             teeProof: finalData.teeProof,
+            zeroG: finalData.zeroG,
             sessionId: finalData.sessionId,
             editMode: editMode || false,
             steps: liveSteps,

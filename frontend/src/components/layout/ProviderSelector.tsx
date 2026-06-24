@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { API_URL } from '@/lib/constants';
 import { cn } from '@/lib/utils';
-import { Eye, ChevronDown } from 'lucide-react';
+import { Eye, ChevronDown, Shield, Cloud } from 'lucide-react';
 
 interface ProviderInfo {
   id: string;
@@ -11,6 +11,7 @@ interface ProviderInfo {
   hasKey: boolean;
   supportsVision: boolean;
   maxContextTokens?: number;
+  isZeroG?: boolean;
 }
 
 interface ProviderSelectorProps {
@@ -34,13 +35,16 @@ function getProviderDescription(providerId: string, providerName: string): strin
   if (id.includes('glm') || name.includes('glm')) {
     return 'Z.AI model with strong agentic coding and reasoning';
   }
-  if (id.includes('0g')) {
-    return '0G custom model optimized for speed and structure';
+  if (id === '0g') {
+    return 'TEE-verified model running in a decentralized trusted execution environment';
+  }
+  if (id.includes('0g-deepseek') || (id.includes('0g') && id.includes('deepseek'))) {
+    return 'DeepSeek V4 running in 0G TEE — fast reasoning with verifiable compute';
   }
   if (id.includes('mimo')) {
     return 'MiMo core model with high-context reasoning';
   }
-  if (id.includes('deepseek')) {
+  if (id.includes('deepseek') && !id.includes('0g')) {
     return 'Most powerful reasoning model for complex CAD operations';
   }
   if (id.includes('qwen')) {
@@ -175,7 +179,7 @@ export function ProviderSelector({ selected, onSelect, requireVision = false }: 
 
       {open && createPortal(
         <div
-          className="fixed w-[290px] max-h-[340px] overflow-y-auto rounded-2xl border border-[#2d2e2f]/90 bg-[#1e1e1f] p-1.5 shadow-2xl z-[9999] chat-scroll"
+          className="fixed w-[290px] max-h-[320px] overflow-y-auto rounded-2xl border border-[#2d2e2f]/90 bg-[#1e1e1f] p-1.5 shadow-2xl z-[9999] chat-scroll"
           onMouseDown={e => e.stopPropagation()}
           style={{
             top: dropdownPos.top + 'px',
@@ -184,41 +188,101 @@ export function ProviderSelector({ selected, onSelect, requireVision = false }: 
             ...(dropdownPos.right !== undefined ? { right: dropdownPos.right + 'px' } : {}),
           }}
         >
-          {visibleProviders.map(p => (
-            <button
-              key={p.id}
-              onClick={() => {
-                console.log('[ProviderSelector] item clicked', { id: p.id, name: p.name, currentSelected: selected });
-                onSelect(p.id);
-                setOpen(false);
-              }}
-              className={cn(
-                'flex flex-col w-full items-start rounded-xl px-4 py-3 text-left transition-colors duration-150 outline-none',
-                selected === p.id
-                  ? 'bg-[#292a2b]'
-                  : 'hover:bg-[#2c2d2e]/80'
-              )}
-            >
-              <div className="flex items-center justify-between w-full">
-                <span className="text-[13px] text-white font-semibold">{p.name}</span>
-                <div className="flex items-center gap-1">
-                  {p.supportsVision && (
-                    <span className="flex items-center gap-0.5 text-[10px] text-blue-400/80 font-medium">
-                      <Eye className="w-3 h-3" /> Vision
-                    </span>
-                  )}
-                </div>
+          {/* Decentralized TEE Verified Models */}
+          {visibleProviders.filter(p => p.isZeroG).length > 0 && (
+            <>
+              <div className="flex items-center gap-1.5 px-3 pt-2 pb-1.5">
+                <Shield className="w-3 h-3 text-emerald-400/80" />
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400/80">
+                  Decentralized TEE Verified
+                </span>
               </div>
-              <p className="text-[11.5px] text-[#9ca3af] mt-0.5 leading-relaxed font-normal">
-                {getProviderDescription(p.id, p.name)}
-              </p>
-              {p.maxContextTokens && (
-                <div className="text-[9px] text-[#9ca3af]/40 mt-1 font-mono">
-                  {p.maxContextTokens >= 1000 ? `${(p.maxContextTokens/1000).toFixed(0)}K` : p.maxContextTokens} ctx
-                </div>
-              )}
-            </button>
-          ))}
+              {visibleProviders.filter(p => p.isZeroG).map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    onSelect(p.id);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    'flex flex-col w-full items-start rounded-xl px-4 py-3 text-left transition-colors duration-150 outline-none',
+                    selected === p.id
+                      ? 'bg-emerald-500/10 border border-emerald-500/20'
+                      : 'hover:bg-[#2c2d2e]/80'
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-[13px] text-white font-semibold">{p.name}</span>
+                    <div className="flex items-center gap-1.5">
+                      {p.supportsVision && (
+                        <span className="flex items-center gap-0.5 text-[10px] text-blue-400/80 font-medium">
+                          <Eye className="w-3 h-3" /> Vision
+                        </span>
+                      )}
+                      <span className="flex items-center gap-0.5 text-[10px] text-emerald-400/60 font-medium">
+                        <Shield className="w-2.5 h-2.5" /> TEE
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-[11.5px] text-[#9ca3af] mt-0.5 leading-relaxed font-normal">
+                    {getProviderDescription(p.id, p.name)}
+                  </p>
+                  {p.maxContextTokens && (
+                    <div className="text-[9px] text-[#9ca3af]/40 mt-1 font-mono">
+                      {p.maxContextTokens >= 1000 ? `${(p.maxContextTokens/1000).toFixed(0)}K` : p.maxContextTokens} ctx
+                    </div>
+                  )}
+                </button>
+              ))}
+              <div className="h-px bg-[#2d2e2f] mx-3 my-1.5" />
+            </>
+          )}
+
+          {/* Centralized AI Providers */}
+          {visibleProviders.filter(p => !p.isZeroG).length > 0 && (
+            <>
+              <div className="flex items-center gap-1.5 px-3 pt-1 pb-1.5">
+                <Cloud className="w-3 h-3 text-[#9ca3af]/60" />
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#9ca3af]/60">
+                  Centralized AI Providers
+                </span>
+              </div>
+              {visibleProviders.filter(p => !p.isZeroG).map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    onSelect(p.id);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    'flex flex-col w-full items-start rounded-xl px-4 py-3 text-left transition-colors duration-150 outline-none',
+                    selected === p.id
+                      ? 'bg-[#292a2b]'
+                      : 'hover:bg-[#2c2d2e]/80'
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-[13px] text-white font-semibold">{p.name}</span>
+                    <div className="flex items-center gap-1">
+                      {p.supportsVision && (
+                        <span className="flex items-center gap-0.5 text-[10px] text-blue-400/80 font-medium">
+                          <Eye className="w-3 h-3" /> Vision
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[11.5px] text-[#9ca3af] mt-0.5 leading-relaxed font-normal">
+                    {getProviderDescription(p.id, p.name)}
+                  </p>
+                  {p.maxContextTokens && (
+                    <div className="text-[9px] text-[#9ca3af]/40 mt-1 font-mono">
+                      {p.maxContextTokens >= 1000 ? `${(p.maxContextTokens/1000).toFixed(0)}K` : p.maxContextTokens} ctx
+                    </div>
+                  )}
+                </button>
+              ))}
+            </>
+          )}
         </div>,
         document.body
       )}

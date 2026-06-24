@@ -57,7 +57,7 @@ export function HomePage() {
   const [prompt, setPrompt] = useState(initialPrompt);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [provider, setProvider] = useState('mimo-pro');
+  const [provider, setProvider] = useState('0g');
   const [parameters, setParameters] = useState<Parameter[]>([]);
   const [currentCode, setCurrentCode] = useState('');
   const [stlUrl, setStlUrl] = useState<string | null>(null);
@@ -318,6 +318,7 @@ export function HomePage() {
           visionVerified: finalData.visionVerified,
           visionFeedback: visionFeedback || undefined,
           teeProof: finalData.teeProof,
+          zeroG: finalData.zeroG,
           steps: liveSteps,
         };
         setMessages(prev => {

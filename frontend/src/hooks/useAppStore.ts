@@ -34,7 +34,7 @@ export function useAppStore() {
   const [images, setImages] = useState<string[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [_provider, _setProvider] = useState("mimo");
+  const [_provider, _setProvider] = useState("0g");
   // Wrap setProvider to log every state change
   const setProvider = useCallback((val: string | ((prev: string) => string)) => {
     const next = typeof val === 'function' ? val(_provider) : val;

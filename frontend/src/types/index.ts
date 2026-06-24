@@ -59,6 +59,7 @@ export interface Message {
   clarification?: ClarificationOption[];
   clarificationAnswers?: ClarificationAnswer[];
   teeProof?: TEEProof;
+  zeroG?: ZeroGMetadata;
   steps?: WorkflowStep[];
   bestEffort?: boolean;
   images?: string[];
@@ -86,6 +87,24 @@ export interface TEEProof {
   signature: string;
   timestamp: number;
   verified: boolean;
+}
+
+export interface ZeroGMetadata {
+  model: string;
+  requestId: string;
+  providerAddress: string;
+  teeVerified?: boolean;
+  billing: {
+    inputCost: string;
+    outputCost: string;
+    totalCost: string;
+  };
+  tokens: {
+    prompt: number;
+    completion: number;
+    reasoning: number;
+    total: number;
+  };
 }
 
 export interface GenerationResult {

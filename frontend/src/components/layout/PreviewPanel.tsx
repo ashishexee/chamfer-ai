@@ -128,6 +128,7 @@ export function PreviewPanel({
           camera={{ position: [30, 30, 30], fov: 30 }}
           gl={{ preserveDrawingBuffer: true, antialias: true }}
           className="w-full h-full"
+          style={{ touchAction: 'none' }}
         >
           <CanvasSetup onReady={handleReady} />
           <ViewTracker onChange={setActiveView} />
@@ -152,7 +153,15 @@ export function PreviewPanel({
               onBoundsReady={handleBoundsReady}
             />
           )}
-          <OrbitControls enableDamping dampingFactor={0.1} zoomSpeed={0.4} makeDefault />
+          <OrbitControls
+            enableDamping
+            dampingFactor={0.1}
+            zoomSpeed={0.4}
+            enableRotate
+            enablePan
+            enableZoom
+            makeDefault
+          />
         </Canvas>
 
         <div className="absolute inset-0 vignette" />
