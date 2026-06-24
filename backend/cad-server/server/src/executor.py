@@ -85,7 +85,7 @@ def execute_cadquery(
                 volumes=volumes,
                 environment={"JOB_DIR": job_dir_env, "XDG_CACHE_HOME": "/tmp"},
                 network_mode="none",
-                mem_limit="512m",
+                mem_limit="1024m",
                 cpu_count=1,
                 read_only=True,
                 tmpfs={"/tmp": "size=128m"},
