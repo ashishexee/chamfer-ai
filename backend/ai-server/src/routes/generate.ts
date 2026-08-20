@@ -10,7 +10,7 @@ import {
   type ParameterSchema,
 } from '../services/llm';
 import { config } from '../config';
-import { RETRY_TEMPLATE } from '../prompts/loader';
+import { RETRY_TEMPLATE } from '../lib/loader';
 import { expandPrompt } from '../services/prompt-expander';
 import { checkVisionSupport } from '../services/vision';
 import {
@@ -115,9 +115,8 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
     session = createSession();
   }
 
-  // Expand vague prompts with default dimensions
-  const expandedPrompt = expandPrompt(prompt);
-  let effectivePrompt = expandedPrompt !== prompt ? expandedPrompt : prompt;
+  // effectivePrompt starts as raw user input — expandPrompt() runs AFTER clarifier
+  let effectivePrompt = prompt;
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -171,7 +170,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       if (!clarification.isClear && clarification.questions.length > 0) {
         console.log(`[ROUTE] Clarification needed: ${clarification.questions.length} questions`);
         stepDone('clarify', `${clarification.questions.length} questions to refine your request`);
-        
+
         // Store clarification questions in session for context tracking
         addMessageToSession(session.id, {
           role: 'system',
@@ -182,7 +181,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
             timestamp: Date.now(),
           },
         });
-        
+
         sendSSE(res, 'clarify', {
           questions: clarification.questions,
           originalPrompt: prompt,
@@ -197,6 +196,13 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       console.error(`[ROUTE] Clarification check failed: ${err}`);
       stepDone('clarify', 'Proceeding with original prompt');
     }
+  }
+
+  // Expand vague prompts with default dimensions (AFTER clarifier has seen raw input)
+  const expandedPrompt = expandPrompt(effectivePrompt);
+  if (expandedPrompt !== effectivePrompt) {
+    effectivePrompt = expandedPrompt;
+    console.log(`[ROUTE] Prompt expanded: "${effectivePrompt.slice(0, 100)}..."`);
   }
 
   // Add user message to session with clarification context if present
@@ -630,7 +636,8 @@ export async function handleClarify(req: Request, res: Response): Promise<void> 
   };
 
   if (!prompt) { res.status(400).json({ error: 'Prompt is required' }); return; }
-  const providerId = provider || 'mimo';
+  if (provider && !config.providers[provider]) { res.status(400).json({ error: `Unknown provider: ${provider}` }); return; }
+  const providerId = provider || '0g';
 
   try {
     console.log(`[CLARIFY] Checking: "${prompt}" with provider: ${providerId}`);

@@ -77,7 +77,7 @@ function ZeroGMetadataPanel({ zeroG }: { zeroG: NonNullable<Message['zeroG']> })
             {zeroG.tokens.total.toLocaleString()}
           </div>
           <div className="text-[9px] text-adam-text-tertiary mt-1.5 uppercase tracking-wider">Total Tokens</div>
-        </div>
+        </div> 
         <div className="px-3.5 py-3 text-center">
           <div className="text-[18px] font-bold text-emerald-400 font-mono leading-none whitespace-nowrap">
             {formatCost(zeroG.billing.totalCost)}

@@ -22,8 +22,8 @@ export const config = {
       name: '0GM',
       apiKey: process.env.OG_API_KEY || '',
       supportsVision: true,
-      maxTokens: 4096,
-      maxContextTokens: 40000,
+      maxTokens: 32768,
+      maxContextTokens: 262144,
       isZeroG: true,
     },
     '0g-deepseek': {
@@ -32,8 +32,8 @@ export const config = {
       name: 'DeepSeek V4 Flash',
       apiKey: process.env.OG_API_KEY || '',
       supportsVision: false,
-      maxTokens: 4096,
-      maxContextTokens: 40000,
+      maxTokens: 384000,
+      maxContextTokens: 1000000,
       isZeroG: true,
     },
     'mimo': {
@@ -42,8 +42,8 @@ export const config = {
       name: 'MiMo 2.5',
       apiKey: process.env.MIMO_API_KEY || '',
       supportsVision: true,
-      maxTokens: 8192,
-      maxContextTokens: 100000,
+      maxTokens: 128000,
+      maxContextTokens: 1000000,
     },
     'mimo-pro': {
       baseUrl: 'https://api.xiaomimimo.com/v1',
@@ -51,8 +51,8 @@ export const config = {
       name: 'MiMo 2.5 Pro',
       apiKey: process.env.MIMO_API_KEY || '',
       supportsVision: false,
-      maxTokens: 8192,
-      maxContextTokens: 100000,
+      maxTokens: 128000,
+      maxContextTokens: 1000000,
     },
 
     'deepseek-v4-flash': {
@@ -61,6 +61,8 @@ export const config = {
       name: 'DeepSeek V4 Flash',
       apiKey: fwKey,
       supportsVision: false,
+      maxTokens: 384000,
+      maxContextTokens: 1000000,
     },
     'deepseek-v4-pro': {
       baseUrl: FIREWORKS_BASE,
@@ -68,6 +70,8 @@ export const config = {
       name: 'DeepSeek V4 Pro',
       apiKey: fwKey,
       supportsVision: false,
+      maxTokens: 384000,
+      maxContextTokens: 1000000,
     },
     'minimax-m3': {
       baseUrl: FIREWORKS_BASE,
@@ -75,6 +79,8 @@ export const config = {
       name: 'MiniMax M3',
       apiKey: fwKey,
       supportsVision: true,
+      maxTokens: 262144,
+      maxContextTokens: 1048576,
     },
     'glm-5p1': {
       baseUrl: FIREWORKS_BASE,
@@ -82,6 +88,8 @@ export const config = {
       name: 'GLM 5.1',
       apiKey: fwKey,
       supportsVision: false,
+      maxTokens: 32768,
+      maxContextTokens: 206848,
     },
     'glm-5p2': {
       baseUrl: FIREWORKS_BASE,
@@ -89,6 +97,8 @@ export const config = {
       name: 'GLM 5.2',
       apiKey: fwKey,
       supportsVision: false,
+      maxTokens: 131072,
+      maxContextTokens: 1048576,
     },
     'qwen3p7-plus': {
       baseUrl: FIREWORKS_BASE,
@@ -96,8 +106,8 @@ export const config = {
       name: 'Qwen 3.7 Plus',
       apiKey: fwKey,
       supportsVision: true,
-      maxTokens: 4096,
-      maxContextTokens: 100000,
+      maxTokens: 65536,
+      maxContextTokens: 1000000,
     },
     'kimi-k2p6': {
       baseUrl: FIREWORKS_BASE,
@@ -105,8 +115,8 @@ export const config = {
       name: 'Kimi K2.6',
       apiKey: fwKey,
       supportsVision: true,
-      maxTokens: 4096,
-      maxContextTokens: 100000,
+      maxTokens: 32768,
+      maxContextTokens: 262144,
     },
     'groq': {
       baseUrl: 'https://api.groq.com/openai/v1',
@@ -114,8 +124,8 @@ export const config = {
       name: 'Qwen3-32B',
       apiKey: process.env.GROQ_API_KEY || '',
       supportsVision: false,
-      maxTokens: 4096,
-      maxContextTokens: 6000,
+      maxTokens: 32768,
+      maxContextTokens: 131072,
     },
     'groq-vision': {
       baseUrl: 'https://api.groq.com/openai/v1',
@@ -123,8 +133,8 @@ export const config = {
       name: 'Llama 4 Scout',
       apiKey: process.env.GROQ_API_KEY || '',
       supportsVision: true,
-      maxTokens: 4096,
-      maxContextTokens: 6000,
+      maxTokens: 16384,
+      maxContextTokens: 131072,
     },
   } as Record<string, ProviderConfig>,
 };

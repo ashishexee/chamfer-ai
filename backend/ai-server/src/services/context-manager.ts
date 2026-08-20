@@ -186,18 +186,19 @@ export function logTokenCounts(
  */
 export function getMaxContextTokens(providerId: string): number {
   const budgets: Record<string, number> = {
-    'mimo': 100000,
-    'mimo-pro': 100000,
-    '0g': 40000,
-    'groq': 6000,
-    'groq-vision': 6000,
-    'deepseek-v4-flash': 100000,
-    'deepseek-v4-pro': 100000,
-    'qwen3p7-plus': 100000,
-    'kimi-k2p6': 100000,
-    'minimax-m3': 100000,
-    'glm-5p1': 100000,
-    'glm-5p2': 100000,
+    '0g': 262144,
+    '0g-deepseek': 1000000,
+    'mimo': 1000000,
+    'mimo-pro': 1000000,
+    'deepseek-v4-flash': 1000000,
+    'deepseek-v4-pro': 1000000,
+    'minimax-m3': 1048576,
+    'glm-5p1': 206848,
+    'glm-5p2': 1048576,
+    'qwen3p7-plus': 1000000,
+    'kimi-k2p6': 262144,
+    'groq': 131072,
+    'groq-vision': 131072,
   };
   return budgets[providerId] || 100000;
 }

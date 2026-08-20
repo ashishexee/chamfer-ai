@@ -2,15 +2,18 @@ import OpenAI from 'openai';
 import { spawn } from 'child_process';
 import { promisify } from 'util';
 import { config } from '../config';
-import { FINAL_SYSTEM_PROMPT, RETRY_TEMPLATE, readPromptFile } from '../prompts/loader';
+import { buildInitialPrompt, buildPromptWithRefs, validateRequestedFiles, RETRY_TEMPLATE } from '../lib/loader';
+import { CLARIFIER_SYSTEM_PROMPT } from './clarifier-prompt';
 
 // ─── JSON Response Extraction ────────────────────────────────────────
 
 export interface CadQueryResult {
-  code: string;
+  code: string | null;
   parameters: Record<string, ParameterSchema>;
   description: string;
   tags: string[];
+  context_needed?: string[];
+  reason?: string;
 }
 
 export interface ParameterSchema {
@@ -36,6 +39,23 @@ export function extractJSONFromResponse(text: string): { data: CadQueryResult | 
   // Strategy 1: Try to parse as-is first (sometimes it works)
   try {
     const parsed = JSON.parse(clean);
+    
+    // Handle context_needed responses (progressive loading)
+    if (parsed.context_needed && Array.isArray(parsed.context_needed)) {
+      return {
+        data: {
+          code: parsed.code || null,
+          parameters: parsed.parameters || {},
+          description: parsed.description || '',
+          tags: parsed.tags || [],
+          context_needed: parsed.context_needed,
+          reason: parsed.reason || '',
+        },
+        error: null,
+      };
+    }
+    
+    // Handle normal code responses
     if (parsed.code && typeof parsed.code === 'string' && parsed.parameters && typeof parsed.parameters === 'object') {
       return {
         data: {
@@ -497,93 +517,89 @@ export async function generateCadQueryCodeStream(
   const { prompt, images, sessionHistory, previousCode, errorFeedback, providerId, callbacks } = options;
   const provider = config.providers[providerId || '0g'] || config.providers['0g'];
   const llm = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseUrl });
+  const isZeroG = provider.isZeroG === true;
+  const maxPhases = 3;
+  
+  // Track loaded files across phases
+  let loadedFiles: string[] = [];
+  
+  for (let phase = 1; phase <= maxPhases; phase++) {
+    console.log(`[LLM] Phase ${phase}/${maxPhases}`);
+    
+    // Build system prompt based on loaded files
+    const systemPrompt = loadedFiles.length === 0
+      ? buildInitialPrompt()
+      : buildPromptWithRefs(loadedFiles);
+    
+    let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+    ];
 
-  let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: 'system', content: FINAL_SYSTEM_PROMPT },
-  ];
-
-  // Add session history if available
-  if (sessionHistory && sessionHistory.length > 0) {
-    for (const msg of sessionHistory) {
-      // Build message content with clarification history if present
-      let messageContent = msg.content;
-      if (msg.clarificationHistory && msg.clarificationHistory.answers) {
-        messageContent = `Previous clarification:
+    // Add session history if available
+    if (sessionHistory && sessionHistory.length > 0) {
+      for (const msg of sessionHistory) {
+        let messageContent = msg.content;
+        if (msg.clarificationHistory && msg.clarificationHistory.answers) {
+          messageContent = `Previous clarification:
 Q: ${msg.clarificationHistory.questions.join('\nQ: ')}
 A: ${msg.clarificationHistory.answers}
 
 ${messageContent}`;
-      }
-      
-      if (msg.images && msg.images.length > 0) {
-        // Only user messages can have image content in OpenAI's API
-        if (msg.role === 'user') {
-          messages.push({
-            role: 'user',
-            content: buildVisionContent(messageContent, msg.images),
-          } as OpenAI.Chat.Completions.ChatCompletionMessageParam);
-        } else {
-          messages.push({ role: 'assistant', content: messageContent });
         }
-      } else if (msg.role === 'system') {
-        // Skip system clarification tracking messages
-        continue;
-      } else {
-        messages.push({ role: msg.role as 'user' | 'assistant', content: messageContent });
+        
+        if (msg.images && msg.images.length > 0) {
+          if (msg.role === 'user') {
+            messages.push({
+              role: 'user',
+              content: buildVisionContent(messageContent, msg.images),
+            } as OpenAI.Chat.Completions.ChatCompletionMessageParam);
+          } else {
+            messages.push({ role: 'assistant', content: messageContent });
+          }
+        } else if (msg.role === 'system') {
+          continue;
+        } else {
+          messages.push({ role: msg.role as 'user' | 'assistant', content: messageContent });
+        }
       }
     }
-  }
 
-  if (previousCode && errorFeedback) {
-    // Inject the previous code as assistant's response
-    messages.push({ role: 'assistant', content: JSON.stringify({ code: previousCode }) });
-    // Inject the error as user feedback
-    messages.push({ role: 'user', content: errorFeedback });
-  }
+    if (previousCode && errorFeedback) {
+      messages.push({ role: 'assistant', content: JSON.stringify({ code: previousCode }) });
+      messages.push({ role: 'user', content: errorFeedback });
+    }
 
-  // Add current user message with images if present
-  if (images && images.length > 0) {
-    messages.push({
-      role: 'user',
-      content: buildVisionContent(prompt, images),
-    });
-  } else {
-    messages.push({ role: 'user', content: prompt });
-  }
+    // Add current user message
+    if (images && images.length > 0) {
+      messages.push({
+        role: 'user',
+        content: buildVisionContent(prompt, images),
+      });
+    } else {
+      messages.push({ role: 'user', content: prompt });
+    }
 
-  // Apply context truncation
-  const maxTokens = provider.maxContextTokens || getMaxContextTokens(providerId || '0g');
-  const originalCount = messages.length;
-  messages = truncateHistory(messages, {
-    systemPrompt: FINAL_SYSTEM_PROMPT,
-    maxTokens,
-    preserveLastNTurns: 2,
-  });
-  if (messages.length < originalCount) {
-    console.log(`[LLM] Context truncated: ${originalCount} → ${messages.length} messages (max ${maxTokens} tokens)`);
-  }
-  logTokenCounts(messages, `generate-${providerId || '0g'}`);
+    // Log token counts
+    logTokenCounts(messages, `generate-phase${phase}-${providerId || '0g'}`);
+    
+    console.log(`[LLM] Provider: ${providerId || '0g'}, Model: ${provider.model}, Phase: ${phase}, Loaded files: ${loadedFiles.length}`);
 
-  const isZeroG = provider.isZeroG === true;
-  console.log(`[LLM] Provider: ${providerId || '0g'}, Model: ${provider.model}, Streaming: true, Images: ${images?.length || 0}, 0G: ${isZeroG}`);
-  if (errorFeedback) console.log(`[LLM] Retry with feedback: ${errorFeedback.slice(0, 100)}...`);
+    let fullContent = '';
+    let fullReasoning = '';
+    let lastChunk: any = null;
 
-  let fullContent = '';
-  let fullReasoning = '';
-  let lastChunk: any = null;
+    try {
+      const stream = await llm.chat.completions.create({
+        model: provider.model,
+        messages,
+        ...(isZeroG ? { max_tokens: 32768, verify_tee: true } : {}),
+        temperature: 0.2,
+        stream: true,
+      } as any);
 
-  try {
-    const stream = await llm.chat.completions.create({
-      model: provider.model,
-      messages,
-      ...(isZeroG ? { max_tokens: 4096, verify_tee: true } : {}),
-      temperature: 0.2,
-      stream: true,
-    } as any);
-
-    for await (const chunk of stream) {
-      lastChunk = chunk;
-      const delta = chunk.choices[0]?.delta;
+      for await (const chunk of stream) {
+        lastChunk = chunk;
+        const delta = chunk.choices[0]?.delta;
       if (!delta) continue;
 
       const reasoningChunk = (delta as any)?.reasoning_content;
@@ -606,11 +622,35 @@ ${messageContent}`;
     if (!data) {
       console.error(`[LLM] JSON extraction failed: ${extractError}`);
       console.error(`[LLM] Full raw response: ${fullContent}`);
-      callbacks?.onError(`JSON extraction failed: ${extractError}`);
-      throw new Error(`JSON extraction failed: ${extractError}`);
+      // On extraction failure, try to continue to next phase
+      continue;
     }
 
-    console.log(`[LLM] Stream done. Content: ${fullContent.length} chars, Reasoning: ${fullReasoning.length} chars, Code: ${data.code.length} chars, Params: ${Object.keys(data.parameters).length}`);
+    console.log(`[LLM] Stream done. Content: ${fullContent.length} chars, Reasoning: ${fullReasoning.length} chars`);
+
+    // Check if LLM requested more context (progressive loading)
+    const contextNeeded = (data as any).context_needed;
+    if (contextNeeded && contextNeeded.length > 0 && !data.code) {
+      // Phase transition: LLM requested more context
+      const newFiles = validateRequestedFiles(contextNeeded)
+        .filter(f => !loadedFiles.includes(f));
+
+      if (newFiles.length === 0) {
+        console.error(`[LLM] Context request but no new files available: ${contextNeeded.join(', ')}`);
+        continue; // Try again with same context
+      }
+
+      // Cache loaded files
+      loadedFiles.push(...newFiles);
+      console.log(`[LLM] Phase ${phase}: Loaded ${newFiles.join(', ')}`);
+      
+      // Emit content about loading
+      callbacks?.onContent?.(`[Loading context: ${newFiles.join(', ')}]`);
+      continue; // Next phase
+    }
+
+    // Code generated — return result
+    console.log(`[LLM] Code generated: ${data.code.length} chars, Params: ${Object.keys(data.parameters).length}`);
     
     // Extract 0G-specific metadata if available
     let zeroGMeta: ZeroGMetadata | undefined;
@@ -635,7 +675,7 @@ ${messageContent}`;
             total: usage?.total_tokens || 0,
           },
         };
-        console.log(`[0G] Metadata captured: ${zeroGMeta.tokens.total} tokens, cost: ${zeroGMeta.billing.totalCost}, provider: ${zeroGMeta.providerAddress.slice(0, 10)}...`);
+        console.log(`[0G] Metadata captured: ${zeroGMeta.tokens.total} tokens, cost: ${zeroGMeta.billing.totalCost}`);
       }
     }
 
@@ -651,30 +691,23 @@ ${messageContent}`;
     
     callbacks?.onDone(result);
     return result;
+    
   } catch (e: unknown) {
     const err = e as any;
     if (err.message === 'terminated' || err.code === 'ECONNRESET' || err.type === 'aborted') {
       console.error(`[LLM] Stream terminated prematurely`);
-      // Try to extract what we have
-      const { data } = extractJSONFromResponse(fullContent || '{}');
-      if (data) {
-        const result: LLMResult = {
-          code: data.code,
-          rawResponse: fullContent || '',
-          reasoning: fullReasoning || '',
-          parameters: data.parameters,
-          description: data.description,
-          tags: data.tags,
-        };
-        callbacks?.onDone(result);
-        return result;
-      }
+      continue; // Try next phase
     }
     const errorMsg = `${err.constructor?.name}: ${err.message}`;
     console.error(`[LLM] ERROR: ${errorMsg}`);
     callbacks?.onError(errorMsg);
-    throw err;
+    // Continue to next phase on error
+    continue;
   }
+  } // End of phase loop
+
+  // If we exhaust all phases without generating code, throw error
+  throw new Error('Failed to generate code after maximum phases');
 }
 
 // ─── Visual Inspection (Vision-Capable Models Only) ──────────────────
@@ -780,14 +813,14 @@ export interface ClarificationResult {
   standardizedPrompt: string;
 }
 
-const CLARIFIER_PROMPT = readPromptFile('clarifier-prompt.txt');
-
 /**
  * Extracts a ClarificationResult from raw LLM text (JSON parsing + repair).
  */
 export function extractClarification(text: string): ClarificationResult | null {
+  // Strip thinking tags (0G model and similar reasoning models emit these)
+  let clean = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+
   // Strip markdown fences if present
-  let clean = text.trim();
   const jsonFenceMatch = clean.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/);
   if (jsonFenceMatch) clean = jsonFenceMatch[1].trim();
 
@@ -836,16 +869,15 @@ export function extractClarification(text: string): ClarificationResult | null {
 
 /**
  * Checks if a prompt needs clarification.
- * Uses the mimo model (mimo-v2.5) by default — this was the proven working model in the original implementation.
+ * Uses the user's selected provider, validated against config.
  */
 export async function checkClarification(
   prompt: string,
   providerId?: string,
   images?: string[],
 ): Promise<ClarificationResult> {
-  // Use the configured clarification provider, or default to 'mimo' (mimo-v2.5) which was proven to work
-  const clarifierProviderId = process.env.CLARIFICATION_PROVIDER || 'mimo';
-  const provider = config.providers[clarifierProviderId] || config.providers[providerId || '0g'] || config.providers['groq'];
+  const clarifierProviderId = providerId || '0g';
+  const provider = config.providers[clarifierProviderId] || config.providers['0g'];
 
   console.log(`[CLARIFIER] Checking prompt: "${prompt.slice(0, 80)}..." using ${clarifierProviderId}, Images: ${images?.length || 0}`);
 
@@ -860,10 +892,12 @@ export async function checkClarification(
     const response = await llm.chat.completions.create({
       model: provider.model,
       messages: [
-        { role: 'system', content: CLARIFIER_PROMPT },
+        { role: 'system', content: CLARIFIER_SYSTEM_PROMPT },
         { role: 'user', content: userContent },
       ],
       temperature: 0.1,
+      response_format: { type: 'json_object' },
+      max_tokens: 2048,
     });
 
     const rawResponse = response.choices[0]?.message?.content || '';
@@ -872,7 +906,25 @@ export async function checkClarification(
 
     const result = extractClarification(rawResponse);
     if (!result) {
-      console.log(`[CLARIFIER] Could not parse response, treating as clear`);
+      console.error(`[CLARIFIER] Parse failed on first attempt, retrying with stricter prompt`);
+      try {
+        const retryResponse = await llm.chat.completions.create({
+          model: provider.model,
+          messages: [
+            { role: 'system', content: CLARIFIER_SYSTEM_PROMPT + '\n\nCRITICAL: Output ONLY the JSON object. No thinking, no explanations, no markdown fences. Start with { and end with }.' },
+            { role: 'user', content: userContent },
+          ],
+          temperature: 0.0,
+          response_format: { type: 'json_object' },
+          max_tokens: 2048,
+        });
+        const retryRaw = retryResponse.choices[0]?.message?.content || '';
+        console.log(`[CLARIFIER] Retry response: ${retryRaw.slice(0, 300)}`);
+        const retryResult = extractClarification(retryRaw);
+        if (retryResult) return retryResult;
+      } catch (retryErr) {
+        console.error(`[CLARIFIER] Retry also failed: ${(retryErr as any).message}`);
+      }
       return { isClear: true, questions: [], standardizedPrompt: prompt };
     }
 
