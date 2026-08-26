@@ -79,11 +79,6 @@ export function deleteSession(id: string): boolean {
   return sessions.delete(id);
 }
 
-export function getAllSessionIds(): string[] {
-  cleanup();
-  return Array.from(sessions.keys());
-}
-
 export function cleanup(): void {
   const now = Date.now();
   for (const [id, session] of sessions.entries()) {

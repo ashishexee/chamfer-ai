@@ -1,10 +1,9 @@
 import OpenAI from 'openai';
 import { spawn } from 'child_process';
-import { promisify } from 'util';
 import { config } from '../config';
-import { buildInitialPrompt, buildPromptWithRefs, validateRequestedFiles, RETRY_TEMPLATE } from '../lib/loader';
+import { buildInitialPrompt, buildPromptWithRefs, validateRequestedFiles } from '../lib/loader';
 import { CLARIFIER_SYSTEM_PROMPT } from './clarifier-prompt';
-import { extractChatId, normalizeChatId, verifyTEEResponse, type TeeStatus, type TeeSignatureReceipt } from '../0g/tee-verifier';
+import { normalizeChatId, verifyTEEResponse, type TeeStatus, type TeeSignatureReceipt } from '../0g/tee-verifier';
 
 // ─── JSON Response Extraction ────────────────────────────────────────
 
@@ -512,7 +511,7 @@ export interface StreamCallbacks {
 
 import { buildVisionContent } from './vision';
 import type { SessionMessage } from './session';
-import { truncateHistory, logTokenCounts, getMaxContextTokens } from './context-manager';
+import { logTokenCounts } from './context-manager';
 
 export interface GenerateOptions {
   prompt: string;
@@ -610,9 +609,6 @@ ${messageContent}`;
         stream: true,
       } as any);
 
-      // Raw response headers carry ZG-Res-Key — the chat id needed for TEE verification
-      const zgChatIdHeader = extractChatId((stream as any)?.response?.headers);
-
       for await (const chunk of stream) {
         lastChunk = chunk;
         const delta = chunk.choices[0]?.delta;
@@ -698,7 +694,7 @@ ${messageContent}`;
         // the Router's tee_verified flag. expectedContent enables the signed-text match
         // check the SDK does not perform (fullContent = exact bytes received, reasoning excluded).
         callbacks?.onTEEVerifyStart?.();
-        const chatId = normalizeChatId(zgChatIdHeader || (lastChunk as any).id || undefined);
+        const chatId = normalizeChatId((lastChunk as any).id || undefined);
         const tee = await verifyTEEResponse(zeroGMeta.providerAddress || undefined, chatId, {
           model: provider.model,
           expectedContent: fullContent,

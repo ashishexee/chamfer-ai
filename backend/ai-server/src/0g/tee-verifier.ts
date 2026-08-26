@@ -30,9 +30,9 @@ import { createHash } from 'node:crypto';
  * instead sign a "<request-hash>:<response-hash>" digest pair, which is recognized and
  * reported as signedTextFormat 'digest-pair' with no plaintext comparison possible.
  *
- * The `chatId` comes from the `ZG-Res-Key` HTTP response header, falling back to the
- * completion id. With the OpenAI SDK in streaming mode the raw headers are reachable via
- * `stream.response.headers`.
+ * The `chatId` comes from the `ZG-Res-Key` HTTP response header when available, falling
+ * back to the completion id. (openai-node's streaming `Stream` exposes no raw response
+ * headers, so in practice the completion id is the working source.)
  *
  * Status semantics — 'failed' is reserved for cryptographic mismatch ONLY (SDK verdict
  * false, or a comparable plain signed-text mismatch). A missing or unfetchable receipt

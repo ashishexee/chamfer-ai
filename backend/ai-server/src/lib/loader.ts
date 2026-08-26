@@ -89,17 +89,6 @@ export function validateRequestedFiles(files: string[]): string[] {
 // ─── Legacy Exports (backward compatibility) ────────────────────
 
 /**
- * @deprecated Use buildInitialPrompt() for progressive loading.
- * Kept for backward compatibility with existing imports.
- */
-export const FINAL_SYSTEM_PROMPT = buildInitialPrompt();
-
-/**
  * Retry template for error corrections.
  */
 export const RETRY_TEMPLATE = readLibFile('retry-user-message.txt');
-
-/**
- * Clarifier prompt for ambiguous requests.
- */
-export const CLARIFIER_PROMPT = readLibFile('clarifier-prompt.txt');

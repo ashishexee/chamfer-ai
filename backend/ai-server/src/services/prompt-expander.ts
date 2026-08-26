@@ -43,11 +43,3 @@ export function expandPrompt(prompt: string): string {
   // Otherwise, return as-is (has dimensions)
   return prompt;
 }
-
-/**
- * Check if a prompt likely contains an image reference.
- */
-export function hasImageReference(prompt: string): boolean {
-  const imageKeywords = ['image', 'photo', 'picture', 'sketch', 'drawing', 'model this', 'from image'];
-  return imageKeywords.some(kw => prompt.toLowerCase().includes(kw));
-}

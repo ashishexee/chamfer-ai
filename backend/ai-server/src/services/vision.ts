@@ -1,16 +1,3 @@
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
-
-/**
- * Reads an image file and returns a base64 data URL.
- */
-export function imageToBase64(filePath: string): string {
-  const data = readFileSync(filePath);
-  const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
-  const mimeType = ext === 'webp' ? 'image/webp' : ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
-  return `data:${mimeType};base64,${data.toString('base64')}`;
-}
-
 /**
  * Validates a base64 data URL image string.
  */
@@ -68,21 +55,4 @@ export function checkVisionSupport(images: string[] | undefined, providerSupport
     }
   }
   return { valid: true };
-}
-
-/**
- * Loads test images from the workspace root for reference testing.
- * Returns an array of base64 data URLs.
- */
-export function loadTestImages(imageNames: string[]): string[] {
-  const images: string[] = [];
-  for (const name of imageNames) {
-    try {
-      const path = resolve('/home/abhieren/Drive/Projects/CAD_AI', name);
-      images.push(imageToBase64(path));
-    } catch (e) {
-      console.warn(`[VISION] Could not load test image: ${name}`);
-    }
-  }
-  return images;
 }
