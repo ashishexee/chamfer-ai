@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from "react";
 import type { AppStore } from "@/hooks/useAppStore";
 import { API_URL, getProviderDisplayName } from "@/lib/constants";
+import { seedPipeline, STEP_RANK } from "@/lib/pipelineSteps";
 import type {
   Message,
   ClarificationOption,
@@ -182,7 +183,11 @@ export function useGeneration(
         let visionFeedback: string | null = null;
         let visionVerified = false;
         let streamWarning: string | undefined;
-        let liveSteps: WorkflowStep[] = [];
+        // Seed the canonical pipeline so the timeline is stable from frame 1:
+        // pending steps stay hidden until their turn, revealed ones never vanish.
+        // When answering clarification questions, step 1 starts pre-completed so
+        // the checklist flows continuously across the two-request round-trip.
+        let liveSteps: WorkflowStep[] = seedPipeline({ clarifyDone: !!answers });
         assistantMessageIdRef.current = null;
 
         // Add a placeholder assistant message that will accumulate steps during generation
@@ -194,7 +199,7 @@ export function useGeneration(
               role: "assistant",
               content: "",
               provider,
-              steps: [],
+              steps: liveSteps,
               editMode: editMode || false,
               timestamp: Date.now(),
             },
@@ -215,6 +220,60 @@ export function useGeneration(
               return next;
             });
           }
+        };
+
+        // Minimum on-screen time per step: the backend emits step(running) and
+        // stepDone() back-to-back for fast stages, so without this gate several
+        // checkmarks would pop in fully done within one network flush. A step
+        // that arrives already-done first reveals as running, then flips after
+        // the minimum elapses. Purely visual — real work is never delayed.
+        const MIN_STEP_MS = 450;
+        const revealedAt = new Map<string, number>();
+        const flipTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+        const markRevealed = (id: string) => {
+          revealedAt.set(id, Date.now());
+        };
+
+        const applyDone = (id: string, detail?: string) => {
+          const idx = liveSteps.findIndex((s) => s.id === id);
+          if (idx < 0) return;
+          const updated = [...liveSteps];
+          updated[idx] = {
+            ...updated[idx],
+            status: "done" as const,
+            detail: detail || updated[idx].detail,
+          };
+          updateSteps(updated);
+        };
+
+        const scheduleDone = (id: string, detail?: string) => {
+          const elapsed = Date.now() - (revealedAt.get(id) ?? Date.now());
+          const wait = Math.max(0, MIN_STEP_MS - elapsed);
+          if (wait === 0) {
+            applyDone(id, detail);
+            return;
+          }
+          flipTimers.set(
+            id,
+            setTimeout(() => {
+              flipTimers.delete(id);
+              applyDone(id, detail);
+            }, wait),
+          );
+        };
+
+        const flushFlips = () => {
+          for (const t of flipTimers.values()) clearTimeout(t);
+          if (flipTimers.size > 0) {
+            const ids = new Set(flipTimers.keys());
+            const updated = liveSteps.map((s) =>
+              ids.has(s.id) ? { ...s, status: "done" as const } : s,
+            );
+            updateSteps(updated);
+          }
+          flipTimers.clear();
+          revealedAt.clear();
         };
 
         while (true) {
@@ -273,16 +332,22 @@ export function useGeneration(
                     (s) => s.id === data.id,
                   );
                   if (existingIndex >= 0) {
-                    const updated = [...liveSteps];
-                    updated[existingIndex] = {
-                      ...updated[existingIndex],
-                      status: data.status || updated[existingIndex].status,
-                      detail: data.detail ?? updated[existingIndex].detail,
-                      label: data.label || updated[existingIndex].label,
-                      icon: data.icon || updated[existingIndex].icon,
-                      timestamp: Date.now(),
-                    };
-                    updateSteps(updated);
+                    const nextStatus = data.status || liveSteps[existingIndex].status;
+                    if (nextStatus === "done") {
+                      // Respect the minimum on-screen time before flipping to done
+                      scheduleDone(data.id, data.detail);
+                    } else {
+                      const updated = [...liveSteps];
+                      updated[existingIndex] = {
+                        ...updated[existingIndex],
+                        status: nextStatus,
+                        detail: data.detail ?? updated[existingIndex].detail,
+                        label: data.label || updated[existingIndex].label,
+                        icon: data.icon || updated[existingIndex].icon,
+                        timestamp: Date.now(),
+                      };
+                      updateSteps(updated);
+                    }
                   } else {
                     const newStep: WorkflowStep = {
                       id: data.id,
@@ -292,7 +357,32 @@ export function useGeneration(
                       status: data.status || "running",
                       timestamp: Date.now(),
                     };
-                    updateSteps([...liveSteps, newStep]);
+                    markRevealed(newStep.id);
+                    // A step that arrives already-done (fast stages emit
+                    // running+done in one flush) reveals as running first.
+                    const insertStatus =
+                      newStep.status === "done" ? "running" : newStep.status;
+                    const rank =
+                      STEP_RANK[newStep.id] ?? Number.MAX_SAFE_INTEGER;
+                    let insertAt = liveSteps.length;
+                    for (let i = 0; i < liveSteps.length; i++) {
+                      if (
+                        (STEP_RANK[liveSteps[i].id] ?? Number.MAX_SAFE_INTEGER) >
+                        rank
+                      ) {
+                        insertAt = i;
+                        break;
+                      }
+                    }
+                    const next = [...liveSteps];
+                    next.splice(insertAt, 0, {
+                      ...newStep,
+                      status: insertStatus as WorkflowStep["status"],
+                    });
+                    updateSteps(next);
+                    if (newStep.status === "done") {
+                      scheduleDone(newStep.id, newStep.detail);
+                    }
                   }
                 } else if (currentEvent === "validation-warning") {
                   if (data.inspection) {
@@ -304,6 +394,9 @@ export function useGeneration(
                   }
                 } else if (currentEvent === "done") {
                   finalData = data;
+                  // Apply any visually-gated flips now so the final message is
+                  // consistent with the completed run.
+                  flushFlips();
                   if (data.inspection) setInspection(data.inspection);
                   if (data.snapshots) setSnapshots(data.snapshots);
                   if (data.visionVerified) visionVerified = true;
@@ -323,7 +416,17 @@ export function useGeneration(
                     );
                     updateSteps(updated);
                   }
+                  // Prune steps whose turn never came (tee-verify on non-0G
+                  // providers, vision without images) — they were never shown,
+                  // so removing them lets the counter settle at N/N.
+                  const revealed = liveSteps.filter(
+                    (s) => s.status !== "pending",
+                  );
+                  if (revealed.length !== liveSteps.length) {
+                    updateSteps(revealed);
+                  }
                 } else if (currentEvent === "error") {
+                  flushFlips();
                   throw new Error(data.error);
                 }
               } catch (e: any) {
@@ -346,6 +449,9 @@ export function useGeneration(
                 role: "assistant",
                 content: "",
                 clarification: clarifyQuestions!,
+                // Keep the frozen checklist on the clarification card — the
+                // timeline is part of the conversation history, not disposable.
+                steps: liveSteps,
               };
             } else {
               next.push({
@@ -534,6 +640,9 @@ export function useGeneration(
           role: "assistant",
           content: `Error: ${errorMsg}`,
           error: errorMsg,
+          // Keep the timeline visible on errors — the failed step shows red and
+          // everything after it never started, so it was never revealed.
+          steps: liveSteps,
           timestamp: Date.now(),
         };
         setMessages((prev) => {

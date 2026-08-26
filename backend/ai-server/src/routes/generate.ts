@@ -274,10 +274,17 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
           onContent: () => {},
           onDone: (r) => sendSSE(res, 'llm-done', { codeLength: r.code.length }),
           onError: (err) => sendSSE(res, 'llm-error', { error: err }),
-          onTEEVerifyStart: () => step(
-            'tee-verify', 'shield-check', 'Verifying TEE signature',
-            'Cryptographically checking the response against the provider\'s on-chain TEE identity',
-          ),
+          onTEEVerifyStart: () => {
+            // Close 'analyze' first — the TEE check fires after the LLM stream but
+            // before the post-await stepDone below, so without this two steps
+            // would show Running simultaneously and tee-verify would slot in
+            // ahead of its turn.
+            stepDone('analyze', 'Identified the requested geometry type and parameters');
+            step(
+              'tee-verify', 'shield-check', 'Verifying TEE signature',
+              'Cryptographically checking the response against the provider\'s on-chain TEE identity',
+            );
+          },
         } : undefined,
       });
 
@@ -290,6 +297,22 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
 
       if (attempt === 0) {
         stepDone('analyze', 'Identified the requested geometry type and parameters');
+      }
+
+      // Reflect the TEE verification outcome IMMEDIATELY — the check already ran
+      // to completion inside the LLM call, so resolving it here (not at the end
+      // of the attempt) keeps the timeline truthful: tee-verify closes before
+      // syntax begins, in the order the work actually happened.
+      if (attempt === 0 && result.zeroG?.teeStatus) {
+        if (result.zeroG.teeStatus === 'verified') {
+          stepDone('tee-verify', 'Signature verified against on-chain TEE identity');
+        } else if (result.zeroG.teeStatus === 'failed') {
+          stepError('tee-verify', 'TEE signature FAILED verification — response untrusted');
+        } else if (result.zeroG.teeStatus === 'not-verifiable') {
+          stepDone('tee-verify', 'Provider has no verifiable TEE service');
+        } else {
+          stepDone('tee-verify', 'Could not verify independently — router-reported only');
+        }
       }
 
       if (!code || code.length < 20) {
@@ -390,6 +413,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
             warnings: validation?.warnings || [],
             inspection,
           });
+          stepDone('repair', 'Repair instructions sent — retrying');
           continue;
         }
       }
@@ -443,19 +467,6 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       step('deliver', 'package-check', 'Preparing deliverables', 'Packaging STEP, STL, GLB, and snapshots for download');
       console.log(`[ROUTE] SUCCESS on attempt ${attempt + 1}${supportsVision ? ' (vision-verified)' : ''}`);
       stepDone('deliver', 'Files packaged and ready');
-
-      // Reflect the TEE verification outcome in the live workflow timeline
-      if (attempt === 0 && result.zeroG?.teeStatus) {
-        if (result.zeroG.teeStatus === 'verified') {
-          stepDone('tee-verify', 'Signature verified against on-chain TEE identity');
-        } else if (result.zeroG.teeStatus === 'failed') {
-          stepError('tee-verify', 'TEE signature FAILED verification — response untrusted');
-        } else if (result.zeroG.teeStatus === 'not-verifiable') {
-          stepDone('tee-verify', 'Provider has no verifiable TEE service');
-        } else {
-          stepDone('tee-verify', 'Could not verify independently — router-reported only');
-        }
-      }
 
       // Surface a failed TEE signature loudly — per 0G docs this means the response
       // should be treated as untrusted
@@ -564,6 +575,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       errorCategory: lastErrorCategory,
     });
 
+    step('deliver', 'package-check', 'Preparing deliverables', 'Packaging best-effort result');
     stepDone('deliver', 'Best-effort deliverables packaged');
 
     sendSSE(res, 'done', {

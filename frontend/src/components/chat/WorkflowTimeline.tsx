@@ -5,6 +5,7 @@ import {
   PackageCheck, ShieldCheck, Check, ChevronDown, Brain, type LucideIcon,
 } from 'lucide-react';
 import type { WorkflowStep } from '@/types';
+import { STEP_RANK } from '@/lib/pipelineSteps';
 import { cn } from '@/lib/utils';
 
 const ICONS: Record<string, LucideIcon> = {
@@ -15,20 +16,10 @@ const ICONS: Record<string, LucideIcon> = {
   ruler: Ruler,
   camera: Camera,
   eye: Eye,
+  wrench: Ruler,
   'package-check': PackageCheck,
   'shield-check': ShieldCheck,
 };
-
-const SKELETON_STEPS: WorkflowStep[] = [
-  { id: 'analyze', icon: 'search', label: 'Analyzing request', detail: 'Identifying geometry type and parameters', status: 'running', timestamp: 0 },
-  { id: 'clarify', icon: 'help-circle', label: 'Specifications', detail: 'Clarification options were offered', status: 'pending', timestamp: 0 },
-  { id: 'generate', icon: 'code', label: 'Writing CadQuery code', detail: 'Drafting parametric Python script', status: 'pending', timestamp: 0 },
-  { id: 'execute', icon: 'cpu', label: 'Executing CadQuery', detail: 'Sandbox run completed', status: 'pending', timestamp: 0 },
-  { id: 'inspect', icon: 'ruler', label: 'Inspecting geometry', detail: 'Geometry validation passed', status: 'pending', timestamp: 0 },
-  { id: 'dimviews', icon: 'camera', label: 'Drawing dimensional views', detail: 'Orthographic projections rendered', status: 'pending', timestamp: 0 },
-  { id: 'vision', icon: 'eye', label: 'Visual inspection', detail: 'Render matches the request', status: 'pending', timestamp: 0 },
-  { id: 'deliver', icon: 'package-check', label: 'Preparing deliverables', detail: 'Files packaged and ready', status: 'pending', timestamp: 0 },
-];
 
 interface WorkflowTimelineProps {
   steps?: WorkflowStep[];
@@ -36,17 +27,28 @@ interface WorkflowTimelineProps {
   provider?: string;
 }
 
-export function WorkflowTimeline({ steps, reasoning, provider }: WorkflowTimelineProps) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    ...Object.fromEntries((steps || []).map(s => [s.id, s.status === 'done' || s.status === 'running' || s.status === 'error'])),
-  });
+export function WorkflowTimeline({ steps, reasoning, _provider }: WorkflowTimelineProps) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const seenRef = useRef<Set<string>>(new Set());
 
-  const displaySteps = steps && steps.length > 0 ? steps : SKELETON_STEPS;
+  // Canonical order (safety net against out-of-order SSE arrival), then reveal
+  // filter: pending steps are hidden until their turn comes — and once a step
+  // is revealed (running/done/error) it never disappears.
+  const allSteps = steps ?? [];
+  const displaySteps = [...allSteps]
+    .sort((a, b) => (STEP_RANK[a.id] ?? 9999) - (STEP_RANK[b.id] ?? 9999))
+    .filter(s => s.status !== 'pending');
 
-  const doneCount = displaySteps.filter(s => s.status === 'done').length;
-  const syntheticReasoning = displaySteps
+  // Counter counts only REVEALED stages (done / revealed): it starts at 0/1,
+  // grows as steps take their turn, and settles at exactly N/N — it never
+  // includes stages that never ran and therefore never shrinks at the end.
+  const doneCount = allSteps.filter(s => s.status === 'done').length;
+  const revealedCount = allSteps.filter(s => s.status !== 'pending').length;
+
+  if (allSteps.length === 0) return null;
+
+  const syntheticReasoning = allSteps
     .filter(s => s.detail && s.status === 'done')
     .map(s => `${s.label}: ${s.detail}`)
     .join('\n\n');
@@ -74,7 +76,7 @@ export function WorkflowTimeline({ steps, reasoning, provider }: WorkflowTimelin
             <span className="font-title font-bold text-adam-text-tertiary uppercase tracking-widest">Workflow</span>
           </div>
           <span className="text-[10px] text-adam-text-tertiary tabular-nums">
-            {doneCount}/{displaySteps.length}
+            {doneCount}/{revealedCount}
           </span>
         </div>
       </div>
@@ -96,21 +98,16 @@ export function WorkflowTimeline({ steps, reasoning, provider }: WorkflowTimelin
               seenRef.current.add(step.id);
             }
 
-            const StepWrapper = isNew ? motion.div : 'div';
-            const wrapperProps = isNew
-              ? {
-                  initial: { opacity: 0, x: -4 },
-                  animate: { opacity: 1, x: 0 },
-                  transition: { duration: 0.15 },
-                }
-              : {};
-
-            const isExpanded = expanded[step.id];
+            // Running steps auto-expand (their detail is the live action); done
+            // ones collapse unless the user toggled them explicitly.
+            const isExpanded = expanded[step.id] ?? isRunning;
 
             return (
-              <StepWrapper
+              <motion.div
                 key={step.id}
-                {...(wrapperProps as any)}
+                initial={isNew ? { opacity: 0, x: -4 } : false}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.15 }}
                 className="relative"
               >
                 <button
@@ -189,7 +186,7 @@ export function WorkflowTimeline({ steps, reasoning, provider }: WorkflowTimelin
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </StepWrapper>
+              </motion.div>
             );
           })}
         </div>
