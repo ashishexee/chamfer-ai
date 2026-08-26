@@ -46,7 +46,7 @@ interface FinalData {
   inspection?: InspectionData;
   snapshots?: Record<string, string>;
   dimViews?: Record<string, string>;
-  teeProof?: { signature: string };
+  teeProof?: { signature?: string };
 }
 
 export function HomePage() {
@@ -524,7 +524,7 @@ export function HomePage() {
                             )}
                             {msg.teeProof && (
                               <span className="inline-flex items-center gap-1.5 text-[10px] text-blue-400 bg-blue-400/10 rounded-full px-2.5 py-1">
-                                🔒 TEE Verified (0x{msg.teeProof.signature.slice(0, 12)}...)
+                                🔒 TEE Verified{msg.teeProof.signature ? ` (0x${msg.teeProof.signature.slice(0, 12)}...)` : ''}
                               </span>
                             )}
                             {msg.bestEffort && (

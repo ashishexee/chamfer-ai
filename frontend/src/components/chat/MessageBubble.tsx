@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { User, Copy, Check, Eye, AlertTriangle, Pencil, RotateCcw, Shield } from 'lucide-react';
+import { User, Copy, Check, Eye, AlertTriangle, Pencil, RotateCcw, Shield, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Message } from '@/types';
 import { getProviderDisplayName } from '@/lib/constants';
 import { NutIcon } from '@/components/hardware/NutIcon';
 import { ClarificationAnswers } from './ClarificationAnswers';
 import { WorkflowTimeline } from './WorkflowTimeline';
+import { TeeVerifyModal } from './TeeVerifyModal';
+import { TeeVerifiedInfo } from './TeeVerifiedInfo';
 import { DimViews } from './DimViews';
 import { cn } from '@/lib/utils';
 
@@ -46,6 +48,7 @@ function teeStatusLabel(status: NonNullable<NonNullable<Message['zeroG']>['teeSt
 
 function ZeroGMetadataPanel({ zeroG }: { zeroG: NonNullable<Message['zeroG']> }) {
   const [copied, setCopied] = useState(false);
+  const [receiptCopied, setReceiptCopied] = useState(false);
 
   const handleCopy = () => {
     const text = [
@@ -61,6 +64,37 @@ function ZeroGMetadataPanel({ zeroG }: { zeroG: NonNullable<Message['zeroG']> })
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Everything a third party needs to re-verify the TEE signature without access to us
+  const handleCopyReceipt = () => {
+    const r = zeroG.teeReceipt;
+    if (!r) return;
+    const base = `${r.providerEndpoint ?? '{providerEndpoint}'}/signature/${zeroG.chatId ?? '{chatId}'}?model=${r.model ?? '{model}'}`;
+    const text = [
+      'ChamferAI · 0G TEE Verification Receipt',
+      `status:            ${zeroG.teeStatus ?? 'unknown'} (independent EIP-191 check)`,
+      `provider:          ${zeroG.providerAddress}`,
+      ...(r.providerEndpoint ? [`providerEndpoint:  ${r.providerEndpoint}`] : []),
+      ...(zeroG.chatId ? [`chatId:            ${zeroG.chatId}`] : []),
+      ...(r.model ? [`model:             ${r.model}`] : []),
+      `signature:         ${r.signature}`,
+      ...(r.recoveredSigner ? [`recoveredSigner:   ${r.recoveredSigner}`] : []),
+      `signedTextSha256:  ${r.signedTextSha256}`,
+      `signedTextFormat:  ${r.signedTextFormat}`,
+      '',
+      'Verify it yourself:',
+      `1. GET ${base}  →  {text, signature}`,
+      '   (providers may purge old signatures — verify soon after generation)',
+      '2. Recover the signer — must equal recoveredSigner above:',
+      "   node -e \"require('ethers').verifyMessage(process.argv[1],process.argv[2]).then(console.log)\" <text> <signature>",
+      '3. Integrity: sha256(text) must equal signedTextSha256 above',
+      '4. On-chain: recoveredSigner must equal the provider teeSignerAddress in the',
+      '   0G Compute Service record (mainnet RPC https://evmrpc.0g.ai)',
+    ].join('\n');
+    navigator.clipboard.writeText(text);
+    setReceiptCopied(true);
+    setTimeout(() => setReceiptCopied(false), 2000);
   };
 
   return (
@@ -175,13 +209,30 @@ function ZeroGMetadataPanel({ zeroG }: { zeroG: NonNullable<Message['zeroG']> })
             </div>
           </div>
         )}
+        {zeroG.teeReceipt?.recoveredSigner && (
+          <div className="flex items-center justify-between gap-3 px-3.5 py-2 hover:bg-white/[0.01] transition-all">
+            <span className="text-[10px] font-semibold text-adam-text-tertiary uppercase tracking-wider w-20 shrink-0">TEE Signer</span>
+            <div className="flex items-center gap-1.5 flex-1 justify-end">
+              <span className="text-[10.5px] font-mono text-adam-text-secondary/90">
+                {zeroG.teeReceipt.recoveredSigner.slice(0, 8)}...{zeroG.teeReceipt.recoveredSigner.slice(-6)}
+              </span>
+              <button
+                onClick={() => navigator.clipboard.writeText(zeroG.teeReceipt!.recoveredSigner!)}
+                className="p-1 rounded-md hover:bg-white/[0.04] text-adam-text-tertiary/40 hover:text-adam-text-tertiary transition-all"
+                title="Copy TEE signer address (verify it against the provider's on-chain Service record)"
+              >
+                <Copy className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Footer with copy all */}
-      <div className="px-3.5 py-2 border-t border-white/[0.04] bg-white/[0.02]">
+      {/* Footer with copy all + TEE receipt */}
+      <div className={`px-3.5 py-2 border-t border-white/[0.04] bg-white/[0.02] ${zeroG.teeReceipt ? 'grid grid-cols-2 gap-2' : ''}`}>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1.5 text-[10px] text-adam-text-tertiary hover:text-emerald-400 transition-colors w-full justify-center py-1 rounded-md hover:bg-emerald-400/[0.05]"
+          className="flex items-center gap-1.5 text-[10px] text-adam-text-tertiary hover:text-emerald-400 transition-colors justify-center py-1 rounded-md hover:bg-emerald-400/[0.05]"
         >
           {copied ? (
             <>
@@ -195,6 +246,25 @@ function ZeroGMetadataPanel({ zeroG }: { zeroG: NonNullable<Message['zeroG']> })
             </>
           )}
         </button>
+        {zeroG.teeReceipt && (
+          <button
+            onClick={handleCopyReceipt}
+            className="flex items-center gap-1.5 text-[10px] text-adam-text-tertiary hover:text-emerald-400 transition-colors justify-center py-1 rounded-md hover:bg-emerald-400/[0.05]"
+            title="Copy everything needed to re-verify the TEE signature independently"
+          >
+            {receiptCopied ? (
+              <>
+                <Check className="h-3 w-3 text-emerald-400" />
+                <span className="text-emerald-400">Receipt copied</span>
+              </>
+            ) : (
+              <>
+                <Shield className="h-3 w-3" />
+                <span>Copy TEE receipt</span>
+              </>
+            )}
+          </button>
+        )}
       </div>
     </motion.div>
   );
@@ -202,6 +272,7 @@ function ZeroGMetadataPanel({ zeroG }: { zeroG: NonNullable<Message['zeroG']> })
 
 export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
   const isUser = message.role === 'user';
   const isError = !!message.error;
   const isAssistant = message.role === 'assistant';
@@ -363,10 +434,21 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
           {message.teeProof && (
             <span
               className="inline-flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-400/[0.08] rounded-full px-2.5 py-1 ring-1 ring-emerald-400/15"
-              title={`Independently verified against the provider's on-chain TEE signer (chat ${message.teeProof.chatId.slice(0, 10)}...)`}
+              title={message.teeProof.signature
+                ? `Independently verified against the provider's on-chain TEE signer (chat ${message.teeProof.chatId.slice(0, 10)}...)`
+                : 'Independently verified — signature receipt unavailable'}
             >
-              🔒 TEE Verified (0x{message.teeProof.signature.slice(0, 12)}...)
+              🔒 TEE Verified{message.teeProof.signature ? ` (0x${message.teeProof.signature.slice(0, 12)}...)` : ''}
             </span>
+          )}
+          {message.zeroG?.chatId && (
+            <button
+              onClick={() => setVerifyOpen(true)}
+              className="inline-flex items-center gap-1.5 text-[10px] text-adam-text-tertiary hover:text-emerald-400 bg-white/[0.03] hover:bg-emerald-400/[0.08] rounded-full px-2.5 py-1 ring-1 ring-white/[0.06] hover:ring-emerald-400/20 transition-all"
+              title="Re-run TEE verification right now — see every check live"
+            >
+              <RefreshCw className="h-3 w-3" /> Re-verify
+            </button>
           )}
           {message.zeroG?.teeStatus === 'failed' && (
             <span
@@ -389,6 +471,7 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
               Best effort
             </span>
           )}
+          {message.zeroG && <TeeVerifiedInfo />}
         </div>
 
         {/* 0G Provider Metadata */}
@@ -402,6 +485,17 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
             <AlertTriangle className="h-3.5 w-3.5 mt-px shrink-0" />
             <span className="leading-relaxed">{message.warning}</span>
           </div>
+        )}
+
+        {/* On-demand TEE re-verification */}
+        {verifyOpen && message.zeroG?.chatId && (
+          <TeeVerifyModal
+            onClose={() => setVerifyOpen(false)}
+            providerAddress={message.zeroG.providerAddress}
+            chatId={message.zeroG.chatId}
+            model={message.zeroG.model}
+            expectedSignedTextSha256={message.zeroG.teeReceipt?.signedTextSha256}
+          />
         )}
       </div>
     </motion.div>

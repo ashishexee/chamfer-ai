@@ -466,12 +466,16 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       }
 
       // teeProof is only issued for cryptographically verified responses — the frontend
-      // badge renders from this field, so no badge means "not independently verified"
+      // badge renders from this field, so no badge means "not independently verified".
+      // signature carries the REAL EIP-191 bytes when the provider's signature endpoint
+      // responded; it is absent (not faked) when only the verdict was possible.
       const teeProof = result.zeroG?.teeStatus === 'verified'
         ? {
             providerAddress: result.zeroG.providerAddress,
+            teeSignerAddress: result.zeroG.teeReceipt?.recoveredSigner,
             chatId: result.zeroG.chatId || '',
-            signature: result.zeroG.chatId || result.zeroG.requestId || 'verified',
+            signature: result.zeroG.teeReceipt?.signature,
+            model: result.zeroG.teeReceipt?.model,
             timestamp: Date.now(),
             verified: true,
           }

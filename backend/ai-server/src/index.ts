@@ -5,6 +5,7 @@ import { handleGenerate, handleUpdateParams, handleListProviders, handleGetSessi
 import { router as authRouter } from './routes/auth.routes';
 import { router as chatRouter } from './routes/chat.routes';
 import { router as modelsRouter } from './routes/models.routes';
+import { router as teeRouter } from './routes/tee.routes';
 import { config } from './config';
 
 const app = express();
@@ -21,10 +22,11 @@ app.post('/api/update-params', handleUpdateParams);
 app.get('/api/sessions/:id', handleGetSession);
 app.delete('/api/sessions/:id', handleDeleteSession);
 
-// Auth + chat + models
+// Auth + chat + models + tee
 app.use('/api/auth', authRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/models', modelsRouter);
+app.use('/api/tee', teeRouter);
 
 if (process.env.NODE_ENV !== 'test') {
   app.listen(config.port, () => {

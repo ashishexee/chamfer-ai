@@ -84,7 +84,12 @@ export interface Provider {
 export interface TEEProof {
   providerAddress: string;
   chatId: string;
-  signature: string;
+  /** Real EIP-191 signature bytes (0x + 130 hex) when the provider's signature endpoint responded; absent = verified but receipt unavailable */
+  signature?: string;
+  /** Address recovered from the signature — compare against the provider's on-chain TEE signer */
+  teeSignerAddress?: string;
+  /** The model id that served the request */
+  model?: string;
   timestamp: number;
   verified: boolean;
 }
@@ -102,6 +107,19 @@ export interface ZeroGMetadata {
   teeDetail?: string;
   /** chat id from the ZG-Res-Key header — the handle for re-verification */
   chatId?: string;
+  /** captured TEE signature receipt — makes the verification independently checkable */
+  teeReceipt?: {
+    signature: string;
+    recoveredSigner?: string;
+    signedTextSha256: string;
+    /** 'plain' = raw text signed (comparable) · 'digest-pair' = current 0G format "<req-hash>:<res-hash>" */
+    signedTextFormat: 'plain' | 'digest-pair';
+    /** true = plain text matched · false = plain text DIFFERED (untrusted) · undefined = digest-pair, not comparable */
+    contentMatched?: boolean;
+    model?: string;
+    /** provider proxy endpoint — lets anyone re-fetch the signature for independent verification */
+    providerEndpoint?: string;
+  };
   billing: {
     inputCost: string;
     outputCost: string;
@@ -152,9 +170,31 @@ export interface InspectionData {
 export interface TEEProof {
   providerAddress: string;
   chatId: string;
-  signature: string;
+  /** Real EIP-191 signature bytes (0x + 130 hex) when the provider's signature endpoint responded; absent = verified but receipt unavailable */
+  signature?: string;
+  /** Address recovered from the signature — compare against the provider's on-chain TEE signer */
+  teeSignerAddress?: string;
+  /** The model id that served the request */
+  model?: string;
   timestamp: number;
   verified: boolean;
+}
+
+/** One check inside an on-demand TEE re-verification (see TeeVerifyResponse) */
+export interface TeeVerifyStep {
+  key: 'refetch' | 'recover' | 'integrity' | 'onchain';
+  label: string;
+  /** true = passed · false = FAILED · null = could not run */
+  pass: boolean | null;
+  detail?: string;
+}
+
+/** Response of POST /api/tee/verify — a fresh, independent re-verification */
+export interface TeeVerifyResponse {
+  status: 'verified' | 'unverified' | 'failed' | 'not-verifiable';
+  detail?: string;
+  receipt: ZeroGMetadata['teeReceipt'] | null;
+  steps: TeeVerifyStep[];
 }
 
 export interface Message {

@@ -4,7 +4,7 @@ import { promisify } from 'util';
 import { config } from '../config';
 import { buildInitialPrompt, buildPromptWithRefs, validateRequestedFiles, RETRY_TEMPLATE } from '../lib/loader';
 import { CLARIFIER_SYSTEM_PROMPT } from './clarifier-prompt';
-import { extractChatId, verifyTEEResponse, type TeeStatus } from '../0g/tee-verifier';
+import { extractChatId, normalizeChatId, verifyTEEResponse, type TeeStatus, type TeeSignatureReceipt } from '../0g/tee-verifier';
 
 // ─── JSON Response Extraction ────────────────────────────────────────
 
@@ -476,6 +476,8 @@ export interface ZeroGMetadata {
   teeDetail?: string;
   /** chat id from the ZG-Res-Key header — the handle for re-verification */
   chatId?: string;
+  /** captured TEE signature receipt — makes the verification independently checkable */
+  teeReceipt?: TeeSignatureReceipt;
   billing: {
     inputCost: string;
     outputCost: string;
@@ -685,21 +687,28 @@ ${messageContent}`;
           tokens: {
             prompt: usage?.prompt_tokens || 0,
             completion: usage?.completion_tokens || 0,
-            reasoning: usage?.reasoning_tokens || 0,
+            // Router reports reasoning under OpenAI-style nesting; some providers use a flat field
+            reasoning: usage?.completion_tokens_details?.reasoning_tokens || usage?.reasoning_tokens || 0,
             total: usage?.total_tokens || 0,
           },
         };
 
         // Independent TEE verification — EIP-191 signature check against the provider's
-        // on-chain TEE signer. Does not trust the Router's tee_verified flag.
+        // on-chain TEE signer, plus capture of the raw signature receipt. Does not trust
+        // the Router's tee_verified flag. expectedContent enables the signed-text match
+        // check the SDK does not perform (fullContent = exact bytes received, reasoning excluded).
         callbacks?.onTEEVerifyStart?.();
-        const chatId = zgChatIdHeader || (lastChunk as any).id || undefined;
-        const tee = await verifyTEEResponse(zeroGMeta.providerAddress || undefined, chatId);
+        const chatId = normalizeChatId(zgChatIdHeader || (lastChunk as any).id || undefined);
+        const tee = await verifyTEEResponse(zeroGMeta.providerAddress || undefined, chatId, {
+          model: provider.model,
+          expectedContent: fullContent,
+        });
         zeroGMeta.chatId = chatId;
         zeroGMeta.teeStatus = tee.status;
         zeroGMeta.teeSource = 'independent';
         zeroGMeta.teeDetail = tee.detail;
         zeroGMeta.teeVerified = tee.status === 'verified';
+        zeroGMeta.teeReceipt = tee.receipt;
         if (tee.status === 'unverified') {
           // Could not verify on our side — fall back to the Router's claim, clearly labeled
           zeroGMeta.teeSource = 'router-only';
