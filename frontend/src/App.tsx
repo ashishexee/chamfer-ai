@@ -44,6 +44,7 @@ export default function App() {
   });
   const {
     collapsed,
+    setCollapsed,
     panelAnimating,
     rotatingKey,
     chatPanelRef,
@@ -131,8 +132,7 @@ export default function App() {
             ) : (
               /* ── Editor layout (3 panels) ── */
               <ResizablePanelGroup
-                direction="horizontal"
-                autoSaveId="chamfer-ai-editor-v3"
+                orientation="horizontal"
                 className={cn(
                   "h-full w-full",
                   panelAnimating && "panel-animated",
@@ -146,11 +146,10 @@ export default function App() {
                   minSize={20}
                   maxSize={400}
                   defaultSize={30}
-                  order={1}
                   onResize={(size) => {
                     if (panelAnimating) return;
                     if (size.asPercentage < 0.5)
-                      store.setCollapsed?.((c: any) =>
+                      setCollapsed((c) =>
                         c.chat ? c : { ...c, chat: true },
                       );
                   }}
@@ -189,11 +188,10 @@ export default function App() {
                   collapsedSize={0}
                   minSize={30}
                   defaultSize={45}
-                  order={2}
                   onResize={(size) => {
                     if (panelAnimating) return;
                     if (size.asPercentage < 0.5)
-                      store.setCollapsed?.((c: any) =>
+                      setCollapsed((c) =>
                         c.preview ? c : { ...c, preview: true },
                       );
                   }}
@@ -231,11 +229,10 @@ export default function App() {
                   minSize={300}
                   defaultSize={26}
                   maxSize={400}
-                  order={3}
                   onResize={(size) => {
                     if (panelAnimating) return;
                     if (size.asPercentage < 0.5)
-                      store.setCollapsed?.((c: any) =>
+                      setCollapsed((c) =>
                         c.right ? c : { ...c, right: true },
                       );
                   }}

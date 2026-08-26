@@ -8,7 +8,6 @@ const web3AuthContextConfig: Web3AuthContextConfig = {
     clientId,
     web3AuthNetwork: WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
     sessionTime: 86400 * 7,
-    storageType: 'local',
   },
 };
 

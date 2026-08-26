@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react";
 import type { AppStore } from "@/hooks/useAppStore";
+import type { ParameterSchema } from "@/types";
 import { API_URL, CHAT_ENDPOINTS, MODEL_ENDPOINTS } from "@/lib/constants";
 
 /**
@@ -88,7 +89,7 @@ export function useChatSessions(
         setParameters(session.parameters || {});
         if (session.parameters && Object.keys(session.parameters).length > 0) {
           const vals: Record<string, number> = {};
-          Object.entries(session.parameters).forEach(([name, schema]) => {
+          Object.entries(session.parameters as Record<string, ParameterSchema>).forEach(([name, schema]) => {
             if (typeof schema.default === "number") {
               vals[name] = schema.default;
             }
@@ -144,7 +145,7 @@ export function useChatSessions(
             if (model.parameters && Object.keys(model.parameters).length > 0) {
               setParameters(model.parameters);
               const modelVals: Record<string, number> = {};
-              Object.entries(model.parameters).forEach(([name, schema]) => {
+              Object.entries(model.parameters as Record<string, ParameterSchema>).forEach(([name, schema]) => {
                 if (typeof schema.default === "number") {
                   modelVals[name] = schema.default;
                 }

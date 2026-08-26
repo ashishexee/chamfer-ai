@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { AppStore } from "@/hooks/useAppStore";
 import { API_URL, MODEL_ENDPOINTS } from "@/lib/constants";
-import type { Parameter, InspectionData } from "@/types";
+import type { ParameterSchema, InspectionData } from "@/types";
 
 /**
  * Handles 0G decentralized storage uploads and iteration storage.
@@ -40,13 +40,10 @@ export function useModelStorage(store: AppStore) {
       stepBase64?: string;
       glbBase64?: string;
       dimViews?: Record<string, string>;
-      parameters?: Parameter[];
+      parameters?: Record<string, ParameterSchema>;
       inspection?: InspectionData | null;
       boundingBox?: { size?: number[] };
     }) => {
-      console.log(
-        `[0G] Frontend: upload initiated for session ${model.sessionId} message ${model.messageOrder}`,
-      );
       setRootHashesLoading(true);
       setRootHashes(null);
       setTxSeqs(null);
@@ -129,7 +126,6 @@ export function useModelStorage(store: AppStore) {
 
       setRootHashesLoading(false);
       setUploadProgress(null);
-      console.log(`[0G] Frontend: upload successful`);
       return finalData;
     },
     [authHeaders, setRootHashesLoading, setRootHashes, setTxSeqs, setUploadProgress],

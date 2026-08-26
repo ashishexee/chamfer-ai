@@ -14,6 +14,8 @@ export interface RootHashData {
   step?: string;
   glb?: string;
   dimViews?: string;
+  snapshots?: string;
+  inspection?: string;
 }
 
 export interface Parameter {
@@ -53,6 +55,7 @@ export interface WorkflowStep {
 export interface Message {
   role: 'user' | 'assistant';
   content: string;
+  specifications?: Specification[];
   reasoning?: string;
   provider?: string;
   error?: string;
@@ -167,19 +170,6 @@ export interface InspectionData {
   visionFeedback?: string;
 }
 
-export interface TEEProof {
-  providerAddress: string;
-  chatId: string;
-  /** Real EIP-191 signature bytes (0x + 130 hex) when the provider's signature endpoint responded; absent = verified but receipt unavailable */
-  signature?: string;
-  /** Address recovered from the signature — compare against the provider's on-chain TEE signer */
-  teeSignerAddress?: string;
-  /** The model id that served the request */
-  model?: string;
-  timestamp: number;
-  verified: boolean;
-}
-
 /** One check inside an on-demand TEE re-verification (see TeeVerifyResponse) */
 export interface TeeVerifyStep {
   key: 'refetch' | 'recover' | 'integrity' | 'onchain';
@@ -195,32 +185,6 @@ export interface TeeVerifyResponse {
   detail?: string;
   receipt: ZeroGMetadata['teeReceipt'] | null;
   steps: TeeVerifyStep[];
-}
-
-export interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-  specifications?: Specification[];
-  provider?: string;
-  dimViews?: Record<string, string>;
-  error?: string;
-  clarification?: ClarificationOption[];
-  clarificationAnswers?: ClarificationAnswer[];
-  teeProof?: TEEProof;
-  steps?: WorkflowStep[];
-  bestEffort?: boolean;
-  warning?: string;
-  inspection?: InspectionData;
-  snapshots?: Record<string, string>;
-  visionVerified?: boolean;
-  visionFeedback?: string;
-  timestamp?: number;
-}
-
-export interface Provider {
-  id: string;
-  name: string;
-  desc: string;
 }
 
 export interface ChatSession {
@@ -252,22 +216,4 @@ export interface SavedModel {
   inspection?: InspectionData;
   bounding_box?: { size?: number[] };
   created_at: string;
-}
-
-export interface RootHashData {
-  code?: string;
-  stl?: string;
-  step?: string;
-  glb?: string;
-  dimViews?: string;
-  snapshots?: string;
-  inspection?: string;
-}
-
-export interface GenerationResult {
-  code: string;
-  parameters: Record<string, ParameterSchema>;
-  description: string;
-  tags: string[];
-  teeProof?: TEEProof;
 }

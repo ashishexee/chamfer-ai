@@ -10,7 +10,7 @@ interface UseParamUpdateOptions {
   onGlbBase64Update?: (base64: string) => void;
   onStlBase64Update: (base64: string) => void;
   onRevokeUrl: (url: string) => void;
-  onParametersUpdate: (params: Parameter[]) => void;
+  onParametersUpdate: (params: Record<string, ParameterSchema>) => void;
   onSnapshotsUpdate?: (snapshots: Record<string, string>) => void;
   onDimViewsUpdate?: (dimViews: Record<string, string>) => void;
   onInspectionUpdate?: (inspection: any) => void;

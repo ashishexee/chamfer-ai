@@ -53,21 +53,6 @@ export function compressImage(dataUrl: string, maxWidth: number = 1024): Promise
 }
 
 /**
- * Extracts base64 data from a data URL.
- */
-export function extractBase64FromDataUrl(dataUrl: string): string {
-  return dataUrl.split(',')[1] || '';
-}
-
-/**
- * Gets the MIME type from a data URL.
- */
-export function getMimeTypeFromDataUrl(dataUrl: string): string {
-  const match = dataUrl.match(/^data:([^;]+);base64,/);
-  return match?.[1] || 'image/png';
-}
-
-/**
  * Loads an image, detects background color from the top-left pixel,
  * keys it out to transparent using a canvas, and returns a data URL.
  */

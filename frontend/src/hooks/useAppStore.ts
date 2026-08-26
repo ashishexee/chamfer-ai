@@ -35,12 +35,9 @@ export function useAppStore() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [_provider, _setProvider] = useState("0g");
-  // Wrap setProvider to log every state change
   const setProvider = useCallback((val: string | ((prev: string) => string)) => {
-    const next = typeof val === 'function' ? val(_provider) : val;
-    console.log('[useAppStore] setProvider called', { from: _provider, to: next });
     _setProvider(val);
-  }, [_provider]);
+  }, []);
   const provider = _provider;
   const [streamReasoning, setStreamReasoning] = useState("");
   const [reasoningEnabled, setReasoningEnabled] = useState(true);

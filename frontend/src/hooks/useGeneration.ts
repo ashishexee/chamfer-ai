@@ -8,6 +8,7 @@ import type {
   WorkflowStep,
   Specification,
   InspectionData,
+  ParameterSchema,
 } from "@/types";
 
 /**
@@ -147,8 +148,10 @@ export function useGeneration(
         reasoningRafRef.current = null;
       }
 
+      // Declared outside the try so the catch path can attach the timeline to its error message.
+      let liveSteps: WorkflowStep[] = seedPipeline({ clarifyDone: !!answers });
+
       try {
-        console.log('[useGeneration] handleGenerate', { provider, prompt: userMsg.content.slice(0, 50), imagesCount: userMsg.images?.length });
         const res = await fetch(`${API_URL}/api/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...authHeaders() },
@@ -187,7 +190,7 @@ export function useGeneration(
         // pending steps stay hidden until their turn, revealed ones never vanish.
         // When answering clarification questions, step 1 starts pre-completed so
         // the checklist flows continuously across the two-request round-trip.
-        let liveSteps: WorkflowStep[] = seedPipeline({ clarifyDone: !!answers });
+        liveSteps = seedPipeline({ clarifyDone: !!answers });
         assistantMessageIdRef.current = null;
 
         // Add a placeholder assistant message that will accumulate steps during generation
@@ -516,7 +519,7 @@ export function useGeneration(
           if (finalData.parameters) {
             setParameters(finalData.parameters);
             const vals: Record<string, number> = {};
-            Object.entries(finalData.parameters).forEach(([name, schema]) => {
+            Object.entries(finalData.parameters as Record<string, ParameterSchema>).forEach(([name, schema]) => {
               if (typeof schema.default === "number") {
                 vals[name] = schema.default;
               }

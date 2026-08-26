@@ -2,11 +2,6 @@ import type { Provider } from '@/types';
 
 export const API_URL = import.meta.env.VITE_API_URL || '';
 
-// ── Auth ──
-export const AUTH_ENDPOINTS = {
-  VERIFY: '/api/auth/verify',
-} as const;
-
 // ── Chat persistence ──
 export const CHAT_ENDPOINTS = {
   SAVE: '/api/chat/save',
@@ -16,12 +11,8 @@ export const CHAT_ENDPOINTS = {
 
 // ── Model storage (0G) ──
 export const MODEL_ENDPOINTS = {
-  SAVE: '/api/models/save',
   UPLOAD_0G: '/api/models/upload-to-0g',
   LATEST_FOR_SESSION: (sessionId: string) => `/api/models/session/${sessionId}/latest`,
-  LIST: '/api/models',
-  GET: (id: string) => `/api/models/${id}`,
-  DELETE: (id: string) => `/api/models/${id}`,
 } as const;
 
 export const PROVIDERS: Provider[] = [
