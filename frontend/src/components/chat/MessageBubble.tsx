@@ -35,6 +35,15 @@ function formatCost(raw: string): string {
   }
 }
 
+function teeStatusLabel(status: NonNullable<NonNullable<Message['zeroG']>['teeStatus']>): string {
+  switch (status) {
+    case 'verified': return 'Cryptographically verified';
+    case 'failed': return 'Signature verification FAILED';
+    case 'not-verifiable': return 'Provider not TEE-verifiable';
+    default: return 'Unverified';
+  }
+}
+
 function ZeroGMetadataPanel({ zeroG }: { zeroG: NonNullable<Message['zeroG']> }) {
   const [copied, setCopied] = useState(false);
 
@@ -44,9 +53,10 @@ function ZeroGMetadataPanel({ zeroG }: { zeroG: NonNullable<Message['zeroG']> })
       `Model: ${zeroG.model}`,
       `Provider: ${zeroG.providerAddress}`,
       `Request ID: ${zeroG.requestId}`,
+      ...(zeroG.chatId ? [`Chat ID: ${zeroG.chatId}`] : []),
       `Tokens: ${zeroG.tokens.total} (prompt: ${zeroG.tokens.prompt}, completion: ${zeroG.tokens.completion}, reasoning: ${zeroG.tokens.reasoning})`,
       `Cost: ${formatCost(zeroG.billing.totalCost)}`,
-      zeroG.teeVerified ? `TEE Verified: Yes` : '',
+      zeroG.teeStatus ? `TEE: ${teeStatusLabel(zeroG.teeStatus)}${zeroG.teeSource ? ` (${zeroG.teeSource})` : ''}` : '',
     ].filter(Boolean).join('\n');
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -132,6 +142,39 @@ function ZeroGMetadataPanel({ zeroG }: { zeroG: NonNullable<Message['zeroG']> })
           <span className="text-[10px] font-semibold text-adam-text-tertiary uppercase tracking-wider w-20 shrink-0">Completion</span>
           <span className="text-[10.5px] font-mono text-adam-text-secondary/90">{zeroG.tokens.completion.toLocaleString()} tokens</span>
         </div>
+        {zeroG.teeStatus && (
+          <div className="flex items-center justify-between gap-3 px-3.5 py-2 hover:bg-white/[0.01] transition-all">
+            <span className="text-[10px] font-semibold text-adam-text-tertiary uppercase tracking-wider w-20 shrink-0">TEE</span>
+            <span
+              className={`text-[10.5px] font-mono text-right ${
+                zeroG.teeStatus === 'verified'
+                  ? 'text-emerald-400'
+                  : zeroG.teeStatus === 'failed'
+                    ? 'text-red-400'
+                    : 'text-amber-400'
+              }`}
+              title={zeroG.teeDetail || undefined}
+            >
+              {teeStatusLabel(zeroG.teeStatus)}
+              {zeroG.teeSource === 'router-only' ? ' (router-reported)' : ''}
+            </span>
+          </div>
+        )}
+        {zeroG.chatId && (
+          <div className="flex items-center justify-between gap-3 px-3.5 py-2 hover:bg-white/[0.01] transition-all">
+            <span className="text-[10px] font-semibold text-adam-text-tertiary uppercase tracking-wider w-20 shrink-0">Chat ID</span>
+            <div className="flex items-center gap-1.5 flex-1 justify-end">
+              <span className="text-[10.5px] font-mono text-adam-text-secondary/90">{zeroG.chatId.slice(0, 10)}...{zeroG.chatId.slice(-6)}</span>
+              <button
+                onClick={() => navigator.clipboard.writeText(zeroG.chatId!)}
+                className="p-1 rounded-md hover:bg-white/[0.04] text-adam-text-tertiary/40 hover:text-adam-text-tertiary transition-all"
+                title="Copy chat ID (used for TEE re-verification)"
+              >
+                <Copy className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Footer with copy all */}
@@ -318,8 +361,27 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
             </span>
           )}
           {message.teeProof && (
-            <span className="inline-flex items-center gap-1.5 text-[10px] text-blue-400 bg-blue-400/[0.08] rounded-full px-2.5 py-1 ring-1 ring-blue-400/15">
+            <span
+              className="inline-flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-400/[0.08] rounded-full px-2.5 py-1 ring-1 ring-emerald-400/15"
+              title={`Independently verified against the provider's on-chain TEE signer (chat ${message.teeProof.chatId.slice(0, 10)}...)`}
+            >
               🔒 TEE Verified (0x{message.teeProof.signature.slice(0, 12)}...)
+            </span>
+          )}
+          {message.zeroG?.teeStatus === 'failed' && (
+            <span
+              className="inline-flex items-center gap-1.5 text-[10px] text-red-400 bg-red-400/[0.08] rounded-full px-2.5 py-1 ring-1 ring-red-400/15"
+              title={message.zeroG.teeDetail || 'The provider TEE signature did not verify'}
+            >
+              <AlertTriangle className="h-3 w-3" /> TEE verification failed
+            </span>
+          )}
+          {!message.teeProof && message.zeroG?.teeStatus === 'unverified' && (
+            <span
+              className="inline-flex items-center gap-1.5 text-[10px] text-amber-400 bg-amber-400/[0.08] rounded-full px-2.5 py-1 ring-1 ring-amber-400/15"
+              title={message.zeroG.teeDetail || 'Only the 0G Router reported this response as verified'}
+            >
+              <Shield className="h-3 w-3" /> TEE unverified
             </span>
           )}
           {message.bestEffort && (

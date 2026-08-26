@@ -93,7 +93,15 @@ export interface ZeroGMetadata {
   model: string;
   requestId: string;
   providerAddress: string;
+  /** true only when the TEE signature was cryptographically verified independently */
   teeVerified?: boolean;
+  /** verified = crypto-verified · unverified = router claim or unverifiable run · failed = signature INVALID · not-verifiable = no TEE service */
+  teeStatus?: 'verified' | 'unverified' | 'failed' | 'not-verifiable';
+  /** how the status was determined: independent cryptographic check vs Router-reported flag */
+  teeSource?: 'independent' | 'router-only';
+  teeDetail?: string;
+  /** chat id from the ZG-Res-Key header — the handle for re-verification */
+  chatId?: string;
   billing: {
     inputCost: string;
     outputCost: string;

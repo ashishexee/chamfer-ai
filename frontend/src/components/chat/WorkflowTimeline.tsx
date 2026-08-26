@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, HelpCircle, Code, Cpu, Ruler, Camera, Eye,
-  PackageCheck, Check, ChevronDown, Brain, type LucideIcon,
+  PackageCheck, ShieldCheck, Check, ChevronDown, Brain, type LucideIcon,
 } from 'lucide-react';
 import type { WorkflowStep } from '@/types';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,7 @@ const ICONS: Record<string, LucideIcon> = {
   camera: Camera,
   eye: Eye,
   'package-check': PackageCheck,
+  'shield-check': ShieldCheck,
 };
 
 const SKELETON_STEPS: WorkflowStep[] = [

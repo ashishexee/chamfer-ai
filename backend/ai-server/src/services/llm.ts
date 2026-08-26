@@ -4,6 +4,7 @@ import { promisify } from 'util';
 import { config } from '../config';
 import { buildInitialPrompt, buildPromptWithRefs, validateRequestedFiles, RETRY_TEMPLATE } from '../lib/loader';
 import { CLARIFIER_SYSTEM_PROMPT } from './clarifier-prompt';
+import { extractChatId, verifyTEEResponse, type TeeStatus } from '../0g/tee-verifier';
 
 // ─── JSON Response Extraction ────────────────────────────────────────
 
@@ -466,7 +467,15 @@ export interface ZeroGMetadata {
   model: string;
   requestId: string;
   providerAddress: string;
+  /** true only when the TEE signature was cryptographically verified independently */
   teeVerified?: boolean;
+  /** tri-state detail: verified / unverified (router claim or unverifiable run) / failed / not-verifiable */
+  teeStatus?: TeeStatus;
+  /** how the status was determined: cryptographic check vs Router-reported flag */
+  teeSource?: 'independent' | 'router-only';
+  teeDetail?: string;
+  /** chat id from the ZG-Res-Key header — the handle for re-verification */
+  chatId?: string;
   billing: {
     inputCost: string;
     outputCost: string;
@@ -495,6 +504,8 @@ export interface StreamCallbacks {
   onContent: (chunk: string) => void;
   onDone: (result: LLMResult) => void;
   onError: (error: string) => void;
+  /** Fires right before the independent TEE signature check starts (0G providers only) */
+  onTEEVerifyStart?: () => void;
 }
 
 import { buildVisionContent } from './vision';
@@ -597,6 +608,9 @@ ${messageContent}`;
         stream: true,
       } as any);
 
+      // Raw response headers carry ZG-Res-Key — the chat id needed for TEE verification
+      const zgChatIdHeader = extractChatId((stream as any)?.response?.headers);
+
       for await (const chunk of stream) {
         lastChunk = chunk;
         const delta = chunk.choices[0]?.delta;
@@ -675,7 +689,30 @@ ${messageContent}`;
             total: usage?.total_tokens || 0,
           },
         };
-        console.log(`[0G] Metadata captured: ${zeroGMeta.tokens.total} tokens, cost: ${zeroGMeta.billing.totalCost}`);
+
+        // Independent TEE verification — EIP-191 signature check against the provider's
+        // on-chain TEE signer. Does not trust the Router's tee_verified flag.
+        callbacks?.onTEEVerifyStart?.();
+        const chatId = zgChatIdHeader || (lastChunk as any).id || undefined;
+        const tee = await verifyTEEResponse(zeroGMeta.providerAddress || undefined, chatId);
+        zeroGMeta.chatId = chatId;
+        zeroGMeta.teeStatus = tee.status;
+        zeroGMeta.teeSource = 'independent';
+        zeroGMeta.teeDetail = tee.detail;
+        zeroGMeta.teeVerified = tee.status === 'verified';
+        if (tee.status === 'unverified') {
+          // Could not verify on our side — fall back to the Router's claim, clearly labeled
+          zeroGMeta.teeSource = 'router-only';
+          const routerFlag = trace?.tee_verified;
+          if (routerFlag === false) {
+            zeroGMeta.teeStatus = 'failed';
+            zeroGMeta.teeDetail = 'Router reports the provider TEE signature failed verification';
+          } else if (routerFlag === true) {
+            zeroGMeta.teeDetail = 'Router reports verified, but independent verification could not run';
+          }
+        }
+
+        console.log(`[0G] Metadata captured: ${zeroGMeta.tokens.total} tokens, cost: ${zeroGMeta.billing.totalCost}, TEE: ${zeroGMeta.teeStatus} (${zeroGMeta.teeSource})`);
       }
     }
 

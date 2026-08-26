@@ -181,6 +181,7 @@ export function useGeneration(
         let liveDimViews: Record<string, string> = {};
         let visionFeedback: string | null = null;
         let visionVerified = false;
+        let streamWarning: string | undefined;
         let liveSteps: WorkflowStep[] = [];
         assistantMessageIdRef.current = null;
 
@@ -298,6 +299,9 @@ export function useGeneration(
                     liveInspection = data.inspection;
                     setInspection(data.inspection);
                   }
+                  if (data.message) {
+                    streamWarning = data.message;
+                  }
                 } else if (currentEvent === "done") {
                   finalData = data;
                   if (data.inspection) setInspection(data.inspection);
@@ -380,6 +384,11 @@ export function useGeneration(
             visionFeedback: visionFeedback || undefined,
             teeProof: finalData.teeProof,
             zeroG: finalData.zeroG,
+            warning:
+              streamWarning ||
+              (finalData.zeroG?.teeStatus === "failed"
+                ? "TEE signature verification failed — this response should be treated as untrusted."
+                : undefined),
             sessionId: finalData.sessionId,
             editMode: editMode || false,
             steps: liveSteps,
