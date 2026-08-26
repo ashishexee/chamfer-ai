@@ -68,23 +68,12 @@ export function ProviderSelector({ selected, onSelect, requireVision = false }: 
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
 
-  // ── DEBUG: Log every render ──
-  console.log('[ProviderSelector] render', {
-    selected,
-    providersCount: providers.length,
-    loading,
-    providerIds: providers.map(p => p.id),
-    selectedProvider: providers.find(p => p.id === selected)?.name ?? 'NOT FOUND',
-  });
-
   // ── Fetch providers once on mount, re-fetch when vision requirement changes ──
   useEffect(() => {
-    console.log('[ProviderSelector] fetch effect firing');
     fetch(`${API_URL}/api/providers`)
       .then(r => r.json())
       .then(data => {
         const all = (data.providers || []).filter((p: ProviderInfo) => p.hasKey);
-        console.log('[ProviderSelector] fetch resolved', { count: all.length, ids: all.map((p: ProviderInfo) => p.id) });
         setProviders(all);
       })
       .catch((err) => {
@@ -105,12 +94,10 @@ export function ProviderSelector({ selected, onSelect, requireVision = false }: 
 
     // If the current selection is already valid, do nothing
     if (valid.some(p => p.id === selectedRef.current)) {
-      console.log('[ProviderSelector] auto-switch: current selection is valid, no change', { selected: selectedRef.current });
       return;
     }
 
     // Otherwise fall back to the first valid provider
-    console.log('[ProviderSelector] auto-switch: switching to first valid provider', { from: selectedRef.current, to: valid[0]?.id });
     if (valid.length > 0) {
       onSelect(valid[0].id);
     }

@@ -33,8 +33,6 @@ export function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageError, setImageError] = useState<string | null>(null);
 
-  console.log('[ChatInput] render', { provider, imagesCount: images.length });
-
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
@@ -45,7 +43,7 @@ export function ChatInput({
     for (const file of Array.from(files)) {
       const validation = validateImage(file);
       if (!validation.valid) {
-        setImageError(validation.error);
+        setImageError(validation.error ?? null);
         continue;
       }
 

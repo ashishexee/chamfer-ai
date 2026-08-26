@@ -27,7 +27,7 @@ interface WorkflowTimelineProps {
   provider?: string;
 }
 
-export function WorkflowTimeline({ steps, reasoning, _provider }: WorkflowTimelineProps) {
+export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const seenRef = useRef<Set<string>>(new Set());
