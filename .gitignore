@@ -27,3 +27,10 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local tooling / session data / nested repos
+.pytest_cache/
+CADAM/
+.reasonix/
+.zcode/
+CADQUERY_API_REFERENCE.md

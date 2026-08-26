@@ -138,22 +138,27 @@ chamferai/
 │   │   └── package.json
 │   │
 │   └── cad-server/           # FastAPI/Python CAD execution server
-│       ├── src/
-│       │   ├── main.py               # FastAPI app (/execute, /update-params)
-│       │   ├── executor.py           # Docker SDK sandbox launcher
-│       │   ├── runner.py             # In-container restricted Python executor
-│       │   ├── inspector.py          # B-rep geometry inspection
-│       │   ├── snapshot.py           # SVG snapshot renderer
-│       │   ├── png_snapshot.py       # PNG render (for LLM vision inspection)
-│       │   ├── dim_views.py          # 2D orthographic dimensional views
-│       │   └── params.py             # Parameter substitution
-│       ├── Dockerfile                # Sandboxed CadQuery executor image
-│       ├── requirements.txt
-│       └── build.sh
+│       ├── server/           # API layer (runs on host or container)
+│       │   ├── src/
+│       │   │   ├── main.py           # FastAPI app (/execute, /update-params, /inspect)
+│       │   │   ├── executor.py       # Docker SDK sandbox launcher
+│       │   │   └── params.py         # Parameter substitution
+│       │   ├── Dockerfile
+│       │   └── requirements.txt
+│       └── executor/         # Sandboxed CadQuery executor image (runs inside Docker)
+│           ├── src/
+│           │   ├── runner.py         # In-container restricted Python executor
+│           │   ├── inspector.py      # B-rep geometry inspection
+│           │   ├── snapshot.py       # SVG snapshot renderer
+│           │   ├── png_snapshot.py   # PNG render (for LLM vision inspection)
+│           │   └── dim_views.py      # 2D orthographic dimensional views
+│           ├── Dockerfile            # chamfer-ai-cad-executor image
+│           └── requirements.txt
 │
 └── docs/
     ├── supabase_schema.sql           # Full DB schema
-    └── supabase_migration_v*.sql     # Incremental migrations
+    ├── supabase_migration_v*.sql     # Incremental migrations
+    └── archive/                      # Historical buildathon docs
 ```
 
 ---
@@ -628,12 +633,13 @@ Run `docs/supabase_schema.sql` in the Supabase SQL Editor, followed by any migra
 ### 2. CAD Server (Docker Image + API)
 
 ```bash
-cd backend/cad-server
+cd backend
 
-# Build the sandboxed executor image
-docker build -t chamferai-cad-executor .
+# Build both images and start the stack (cad-server API + executor image + ai-server)
+docker compose up -d --build
 
-# Start the CAD API server
+# Or run the CAD API server bare-metal for development
+cd cad-server/server
 pip install -r requirements.txt
 python -m uvicorn src.main:app --reload --port 5000
 ```

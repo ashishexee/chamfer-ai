@@ -75,7 +75,7 @@ jobs:
       - name: Wait for services to be healthy
         run: |
           for i in $(seq 1 30); do
-            if curl -s http://localhost:5000/health && curl -s http://localhost:4000/api/health; then
+            if curl -s http://localhost:6000/health && curl -s http://localhost:4000/api/health; then
               echo "Services are up"
               break
             fi

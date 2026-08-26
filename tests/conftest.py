@@ -1,8 +1,12 @@
+import os
+
 import pytest
 import httpx
 
-CAD_SERVER_URL = "http://localhost:5000"
-AI_SERVER_URL = "http://localhost:4000"
+# Docker compose publishes cad-server on host port 6000 (container 5000).
+# Override with CAD_SERVER_URL env when running against a bare-metal server on 5000.
+CAD_SERVER_URL = os.environ.get("CAD_SERVER_URL", "http://localhost:6000")
+AI_SERVER_URL = os.environ.get("AI_SERVER_URL", "http://localhost:4000")
 
 
 @pytest.fixture(scope="session")
