@@ -2,40 +2,58 @@
 
 ## Translate (Move)
 
+```text
+.translate((x, y, z))                    # Move by ONE vector tuple
+```
+
 ```python
-.translate((x, y, z))                    # Move by vector
+import cadquery as cq
 
 # Example: Move a cylinder up
 cylinder = cq.Workplane("XY").circle(10).extrude(20)
 moved = cylinder.translate((0, 0, 50))
+result = moved
 ```
 
 ## Rotate
 
-```python
-# Rotate around axis by angle (degrees)
+```text
 .rotate((0,0,0), (1,0,0), 90)           # axisStart, axisEnd, angleDegrees
+.rotateAboutCenter((1,0,0), 45)         # Rotate about bounding-box center
+```
 
-# Rotate about center of bounding box
-.rotateAboutCenter((1,0,0), 45)
+```python
+import cadquery as cq
 
 # Example: Rotate a box 45 degrees around Z axis
 box = cq.Workplane("XY").box(10, 20, 5)
-rotated = box.rotate((0,0,0), (0,0,1), 45)
+result = box.rotate((0, 0, 0), (0, 0, 1), 45)
 ```
 
 ## Mirror
 
-```python
+```text
 .mirror("XY")           # Mirror about XY plane
 .mirror("XZ")
 .mirror("YZ")
 .mirrorX()              # Mirror about X axis of workplane
 .mirrorY()              # Mirror about Y axis of workplane
 .mirror((1, 0, 0), (0, 0, 0))  # Mirror about plane defined by normal and origin
+```
 
-# Example: Create symmetric part
-half = cq.Workplane("XY").lineTo(10, 0).lineTo(10, 5).lineTo(0, 5).close().extrude(5)
+```python
+import cadquery as cq
+
+# Example: Create symmetric part — draw half, mirror about workplane Y axis
+half = (
+    cq.Workplane("XY")
+    .moveTo(0, 0)
+    .lineTo(10, 0)
+    .lineTo(10, 5)
+    .lineTo(0, 5)
+    .close()
+    .extrude(5)
+)
 result = half.mirrorY()
 ```
 
@@ -71,6 +89,8 @@ result = (
 ### Polar Array
 
 ```python
+import cadquery as cq
+
 # polarArray(radius, startAngle, angle, count)
 result = (
     cq.Workplane("XY")
@@ -80,30 +100,42 @@ result = (
     .polarArray(30, 0, 360, 8)    # 8 holes on a 30mm radius circle
     .hole(3)
 )
+```
 
-# Partial arc
-.polarArray(30, 0, 180, 5)        # 5 holes over 180 degrees
+```text
+# Partial arc: 5 positions spread over 180 degrees
+.polarArray(30, 0, 180, 5)
 ```
 
 ### Iteration (Automatic)
 
-Many methods automatically iterate over all items on the stack:
+Many methods automatically iterate over all items on the stack —
+`vertices()` below selects 4 corners, and `circle()` creates one circle
+at each of them:
 
 ```python
-# vertices() selects 4 corners, circle() creates 4 circles
-result = cq.Workplane("XY").box(1,2,3).faces(">Z").vertices().circle(0.5)
+import cadquery as cq
 
-# each() for custom callbacks
-result = wp.each(lambda loc: cq.Solid.makeSphere(1, pnt=loc))
+result = (
+    cq.Workplane("XY")
+    .box(10, 10, 2)
+    .faces(">Z")
+    .vertices()
+    .circle(1)
+    .extrude(3)
+)
 ```
 
 ## Workplane Shifts
 
 ### Center
 
+```text
+.center(x, y)     # Shift the workplane center
+```
+
 ```python
-# Shift the workplane center
-.center(x, y)
+import cadquery as cq
 
 # Example
 result = (
@@ -119,9 +151,13 @@ result = (
 
 ### Transform
 
-```python
+```text
 # Create a rotated/offset workplane
 .transformed(rotate=cq.Vector(45, 0, 0), offset=cq.Vector(0, 0, 10))
+```
+
+```python
+import cadquery as cq
 
 # Example: Angled workplane
 result = (

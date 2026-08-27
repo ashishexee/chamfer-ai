@@ -1,89 +1,93 @@
-# Assembly Examples
+# Multi-Body Examples
 
-## Simple Assembly with Locations
+The sandbox exports a single `result`. Build multi-part designs as ONE Workplane:
+fuse touching parts with `.union()`, or keep separate parts in a Compound with a
+clearance gap between them. Never return a `cq.Assembly`.
+
+## Stacked Parts Fused with Union
 
 ```python
 import cadquery as cq
 
-# Create parts
-body = cq.Workplane().box(20, 20, 10)
-pin = cq.Workplane().center(0, 0).cylinder(radius=2, height=20)
+plate_length = 60.0     # [30:5:200]
+plate_width = 30.0      # [15:5:100]
+plate_thickness = 5.0   # [2:1:20]
+pin_diameter = 6.0      # [2:1:20]
+pin_height = 12.0       # [5:1:50]
+pin_count = 3           # [1:1:9]
 
-# Create assembly
-assy = cq.Assembly(name="my_part")
-assy.add(body, name="body", color=cq.Color(0.6, 0.6, 0.6, 1.0))
-assy.add(pin, name="pin", color=cq.Color(0.8, 0.2, 0.2, 1.0))
+def make_pin(diameter, height):
+    # Cylinder is centered on origin — lift it so its base sits at z = 0
+    return cq.Workplane("XY").cylinder(height, diameter / 2).translate((0, 0, height / 2))
 
-# Export for web rendering (GLB with colors)
-assy.export("output.glb")
+plate = cq.Workplane("XY").box(plate_length, plate_width, plate_thickness)
+spacing = plate_length / (pin_count + 1)
 
-# Export for engineering (STEP)
-assy.export("output.step")
+result = plate
+for i in range(pin_count):
+    x = -plate_length / 2 + spacing * (i + 1)
+    # Sink each pin 1mm into the plate so the boolean has real overlap
+    pin = make_pin(pin_diameter, pin_height).translate((x, 0, plate_thickness / 2 - 1))
+    result = result.union(pin)
 ```
 
-## Assembly with Constraints
+## Side-by-Side Parts Kept Separate (Compound)
+
+Use this when parts must NOT be fused (e.g., a bolt shown next to its nut).
+Leave a clearance gap ≥ 0.1 mm between the parts, then join them as a Compound.
 
 ```python
 import cadquery as cq
 
-w = 10
-d = 10
-h = 10
+bolt_diameter = 10.0  # [4:1:30]
+bolt_length = 40.0    # [10:5:200]
+nut_size = 18.0       # [8:1:40]
+nut_height = 8.0      # [3:1:20]
+gap = 10.0            # [1:1:50]
 
-part1 = cq.Workplane().box(2 * w, 2 * d, h)
-part2 = cq.Workplane().box(w, d, 2 * h)
-part3 = cq.Workplane().box(w, d, 3 * h)
+bolt = cq.Workplane("XY").circle(bolt_diameter / 2).extrude(bolt_length)
 
-assy = (
-    cq.Assembly(part1, name="part1", loc=cq.Location(cq.Vector(-w, 0, h / 2)))
-    .add(part2, name="part2", color=cq.Color(0, 0, 1, 0.5))
-    .add(part3, name="part3", color=cq.Color("red"))
-    .constrain("part1@faces@>Z", "part3@faces@<Z", "Axis")
-    .constrain("part1@faces@>Z", "part2@faces@<Z", "Axis")
-    .constrain("part1@faces@>Y", "part3@faces@<Y", "Axis")
-    .constrain("part1@faces@>Y", "part2@faces@<Y", "Axis")
-    .constrain("part1@vertices@>(-1,-1,1)", "part3@vertices@>(-1,-1,-1)", "Point")
-    .constrain("part1@vertices@>(1,-1,-1)", "part2@vertices@>(-1,-1,-1)", "Point")
-    .solve()
+nut = (
+    cq.Workplane("XY")
+    .polygon(6, nut_size, circumscribed=True)
+    .extrude(nut_height)
+    .faces(">Z")
+    .workplane()
+    .hole(bolt_diameter)
 )
+nut = nut.translate((bolt_diameter / 2 + nut_size / 2 + gap, 0, 0))
 
-assy.export("assembly.step")
-assy.export("assembly.glb")
+result = cq.Workplane("XY").newObject(
+    [cq.Compound.makeCompound([bolt.val(), nut.val()])]
+)
 ```
 
-## Assembly with Tags
+## Positioning with an Assembly Helper, Then Converting
+
+`cq.Assembly` is a convenient way to place many parts with `cq.Location`,
+but you must convert it to a Compound before assigning it to `result`.
 
 ```python
 import cadquery as cq
+import math
 
-w = 10
-d = 10
-h = 10
+post_height = 30.0   # [10:5:100]
+post_count = 4       # [2:1:8]
+ring_radius = 25.0   # [10:5:60]
 
-part1 = cq.Workplane().box(2 * w, 2 * d, h)
-part2 = cq.Workplane().box(w, d, 2 * h)
-part3 = cq.Workplane().box(w, d, 3 * h)
+def make_post(height):
+    return cq.Workplane("XY").cylinder(height, 3).translate((0, 0, height / 2))
 
-# Tag faces for easy constraint reference
-part1.faces(">Z").edges("<X").vertices("<Y").tag("pt1")
-part1.faces(">X").edges("<Z").vertices("<Y").tag("pt2")
-part3.faces("<Z").edges("<X").vertices("<Y").tag("pt1")
-part2.faces("<X").edges("<Z").vertices("<Y").tag("pt2")
+base = cq.Workplane("XY").cylinder(4, ring_radius + 8)
 
-assy = (
-    cq.Assembly(part1, name="part1", loc=cq.Location(cq.Vector(-w, 0, h / 2)))
-    .add(part2, name="part2", color=cq.Color(0, 0, 1, 0.5))
-    .add(part3, name="part3", color=cq.Color("red"))
-    .constrain("part1@faces@>Z", "part3@faces@<Z", "Axis")
-    .constrain("part1@faces@>Z", "part2@faces@<Z", "Axis")
-    .constrain("part1@faces@>Y", "part3@faces@<Y", "Axis")
-    .constrain("part1@faces@>Y", "part2@faces@<Y", "Axis")
-    .constrain("part1?pt1", "part3?pt1", "Point")
-    .constrain("part1?pt2", "part2?pt2", "Point")
-    .solve()
-)
+assy = cq.Assembly().add(base, name="base")
+for i in range(post_count):
+    angle = 2 * math.pi * i / post_count
+    x = ring_radius * math.cos(angle)
+    y = ring_radius * math.sin(angle)
+    assy = assy.add(make_post(post_height), name=f"post{i}", loc=cq.Location(cq.Vector(x, y, 0)))
 
-assy.export("assembly.step")
+result = cq.Workplane("XY").newObject([assy.toCompound()])
 ```
 
 ## Reusable Component Functions
@@ -91,21 +95,27 @@ assy.export("assembly.step")
 ```python
 import cadquery as cq
 
-def make_bracket(width, height, thickness, hole_dia):
+bracket_width = 40.0   # [20:5:100]
+bracket_height = 30.0  # [15:5:80]
+bracket_thickness = 5.0 # [2:1:15]
+hole_dia = 8.0         # [3:1:20]
+separation = 60.0      # [40:5:150]
+
+def make_bracket(width, height, thickness, bore):
     return (
         cq.Workplane("XY")
         .box(width, height, thickness)
         .faces(">Z")
         .workplane()
-        .hole(hole_dia)
+        .hole(bore)
     )
 
-def make_gear(teeth, pitch_radius, thickness):
-    # ... gear generation code ...
-    pass
+left = make_bracket(bracket_width, bracket_height, bracket_thickness, hole_dia)
+right = make_bracket(bracket_width, bracket_height, bracket_thickness, hole_dia)
+right = right.translate((separation, 0, 0))
 
-# Use in assembly
-assy = cq.Assembly()
-assy.add(make_bracket(40, 30, 5, 8), name="bracket1")
-assy.add(make_bracket(40, 30, 5, 8), name="bracket2", loc=cq.Location((50, 0, 0)))
+# Two independent brackets, kept separate as a Compound
+result = cq.Workplane("XY").newObject(
+    [cq.Compound.makeCompound([left.val(), right.val()])]
+)
 ```

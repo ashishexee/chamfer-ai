@@ -40,7 +40,14 @@ bottom_radius = 20.0  # [5:1:50]
 top_radius = 10.0     # [2:1:50]
 height = 30.0         # [10:5:100]
 
-result = cq.Workplane("XY").cylinder(height, bottom_radius)
+# Loft from the bottom radius to the top radius for a true cone
+result = (
+    cq.Workplane("XY")
+    .circle(bottom_radius)
+    .workplane(offset=height)
+    .circle(top_radius)
+    .loft()
+)
 ```
 
 ## Hollow Cylinder (Tube)
@@ -159,5 +166,7 @@ profile = (
     .lineTo(inner_radius, height)
     .close()
 )
-result = profile.revolve(360, (0, 0, 0), (0, 0, 1))
+# On the XZ workplane the vertical axis is local Y (world Y), not Z:
+# revolving about (0, 1, 0) spins the ring around the part's center.
+result = profile.revolve(360, (0, 0, 0), (0, 1, 0))
 ```

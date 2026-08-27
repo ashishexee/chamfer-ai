@@ -1,113 +1,120 @@
 # Organic Shapes Examples
 
-## Spoon with Overlapping Handle
+Every example here has been executed in the sandbox and checked for correct
+geometry (not just "it ran"). Key techniques: sphere cuts that floor inside
+the part, blind `cutBlind` cavities, and swept handles whose path starts at
+its workplane origin.
+
+## Spoon with Sculpted Bowl
+
+The bowl cavity is a sphere cut whose lowest point stays ABOVE the plate
+bottom, so the bowl floors instead of punching through. The handle overlaps
+the bowl by `overlap` mm so the union has real shared volume.
 
 ```python
 import cadquery as cq
 
 # Parameters
-spoon_length = 200.0    # [100:10:300]
-handle_length = 120.0   # [60:5:200]
-handle_width = 12.0     # [5:1:20]
-handle_thickness = 4.0  # [2:0.5:10]
-bowl_width = 50.0       # [30:2:80]
-bowl_length = 60.0      # [30:2:80]
-bowl_depth = 8.0        # [3:1:15]
-bowl_thickness = 2.0    # [1:0.5:5]
-overlap = 5.0           # [1:1:20]
+bowl_length = 30.0      # [20:2:60]
+bowl_width = 20.0       # [12:2:40]
+bowl_thickness = 3.0    # [2:0.5:8]
+bowl_depth = 1.5        # [0.5:0.5:1.5]  must stay < bowl_thickness
+handle_length = 58.0    # [30:5:120]
+handle_width = 6.0      # [4:1:12]
+overlap = 2.0           # [1:1:5]
 
-# Handle
-handle = cq.Workplane("XY").box(handle_length, handle_width, handle_thickness, centered=True)
-handle = handle.translate((-spoon_length / 2 + handle_length / 2 + overlap / 2, 0, 0))
-
-# Bowl
-bowl_base = cq.Workplane("XY").box(bowl_length, bowl_width, bowl_thickness, centered=True)
-
-# Bowl depression
-bowl_cavity = (
-    cq.Workplane("XY")
-    .workplane(offset=bowl_thickness / 2)
-    .ellipse(bowl_length / 2 - 4, bowl_width / 2 - 4)
-    .extrude(-bowl_depth)
+# Bowl plate (ellipse footprint) and handle overlapping it
+bowl = cq.Workplane("XY").ellipse(bowl_length / 2, bowl_width / 2).extrude(bowl_thickness)
+handle = cq.Workplane("XY").box(handle_length, handle_width, bowl_thickness).translate(
+    (bowl_length / 2 - overlap + handle_length / 2, 0, bowl_thickness / 2)
 )
+spoon = bowl.union(handle)
 
-bowl = bowl_base.cut(bowl_cavity)
-bowl = bowl.translate((spoon_length / 2 - bowl_length / 2 - overlap / 2, 0, 0))
+# Cavity: sphere centered so it cuts bowl_depth into the top surface and
+# leaves a floor of (bowl_thickness - bowl_depth)
+sphere_radius = bowl_length / 2 - 1
+cutter = cq.Workplane("XY").workplane(
+    offset=bowl_thickness + sphere_radius - bowl_depth
+).sphere(sphere_radius)
 
-# Combine with guaranteed overlap
-result = handle.union(bowl)
+result = spoon.cut(cutter)
 ```
 
-## Mug with Handle
+## Mug with Swept Handle
+
+The body cavity uses `cutBlind` with a NEGATIVE depth (down into the part),
+leaving a solid bottom. The handle path is drawn starting at the ORIGIN of
+its workplane — sweep does not relocate profiles reliably otherwise — and
+the swept handle is translated onto the wall afterwards.
 
 ```python
 import cadquery as cq
 
 # Parameters
-outer_diameter = 80.0   # [50:5:120]
-inner_diameter = 70.0   # [40:5:110]
-height = 90.0           # [60:5:150]
-handle_diameter = 12.0  # [5:1:20]
-handle_length = 40.0    # [20:5:70]
-handle_overlap = 5.0    # [1:1:15]
+outer_radius = 20.0    # [12:1:40]
+wall = 3.0             # [1.5:0.5:6]
+bottom = 3.0           # [1.5:0.5:6]
+height = 40.0          # [25:5:80]
+handle_radius = 2.5    # [1.5:0.5:3.5]
 
-# Body
-outer = cq.Workplane("XY").circle(outer_diameter / 2).extrude(height)
-inner = cq.Workplane("XY").circle(inner_diameter / 2).extrude(height + 2)
-inner = inner.translate((0, 0, -1))
-body = outer.cut(inner)
+# Body with a blind cavity (floor stays `bottom` mm thick)
+body = cq.Workplane("XY").circle(outer_radius).extrude(height)
+cavity = (
+    body
+    .faces(">Z")
+    .workplane()
+    .circle(outer_radius - wall)
+    .cutBlind(-(height - bottom))
+)
 
-# Handle (C-shape)
-upper = cq.Workplane("XY").circle(handle_diameter / 2).extrude(handle_length + handle_overlap)
-upper = upper.translate((0, outer_diameter / 2 + handle_length / 2 - handle_overlap / 2, height - 25))
+# Handle: path anchored at the XZ workplane origin, profile plane (YZ)
+# perpendicular to the path start direction (+X), then positioned so both
+# ends bury 1 mm into the mug wall
+handle_path = cq.Workplane("XZ").threePointArc((12, 0), (0, 16))
+handle = (
+    cq.Workplane("YZ")
+    .circle(handle_radius)
+    .sweep(handle_path)
+    .translate((outer_radius - 1, 0, height * 0.35))
+)
 
-lower = cq.Workplane("XY").circle(handle_diameter / 2).extrude(handle_length + handle_overlap)
-lower = lower.translate((0, outer_diameter / 2 + handle_length / 2 - handle_overlap / 2, 25))
-
-bar = cq.Workplane("XY").box(handle_diameter, handle_length, height - 50, centered=True)
-bar = bar.translate((0, outer_diameter / 2 + handle_length / 2 - handle_overlap / 2, height / 2))
-
-handle = upper.union(lower).union(bar)
-handle = handle.rotate((0, 0, 0), (0, 0, 1), 90)
-
-# Union with body
-result = body.union(handle)
+result = cavity.union(handle)
 ```
 
 ## Hammer with Claw Head
 
+The claw is a single angled slot cut through the head end, leaving two
+prongs. The handle is embedded several millimeters into the head before the
+union so the parts cannot end up disconnected.
+
 ```python
 import cadquery as cq
 
 # Parameters
-head_length = 60.0       # [30:5:100]
-head_width = 30.0        # [15:2:50]
-head_height = 30.0       # [15:2:50]
-claw_opening = 15.0      # [5:2:30]
-handle_length = 150.0    # [80:5:250]
-handle_diameter = 20.0   # [10:1:35]
-connector_length = 10.0  # [5:1:20]
-connector_diameter = 22.0 # [10:1:40]
+head_length = 36.0     # [24:2:60]
+head_width = 16.0      # [10:1:24]
+head_height = 16.0     # [10:1:24]
+handle_length = 42.0   # [25:5:80]
+handle_width = 8.0     # [5:1:12]
+handle_depth = 12.0    # [8:1:18]
+claw_angle = 28.0      # [15:1:40]
 
-# Hammer head
-head = cq.Workplane("XY").box(head_length, head_width, head_height, centered=True)
+# Head sunk onto the top of the handle (overlap = head_height/2 + 2)
+head = cq.Workplane("XY").box(head_length, head_width, head_height).translate(
+    (0, 0, handle_length - 2)
+)
+handle = cq.Workplane("XY").box(handle_width, handle_depth, handle_length).translate(
+    (0, 0, handle_length / 2)
+)
+hammer = head.union(handle)
 
-# Claw slot
-claw_slot = cq.Workplane("XY").box(claw_opening, head_width + 2, head_height + 2, centered=True)
-claw_slot = claw_slot.translate((head_length / 2 - claw_opening / 2, 0, 0))
-head = head.cut(claw_slot)
+# Angled slot through the -X end of the head -> two claw prongs
+claw_cutter = (
+    cq.Workplane("XY")
+    .box(head_length / 2, 3, head_height * 1.625)
+    .rotate((0, 0, 0), (0, 1, 0), claw_angle)
+    .translate((-(head_length / 2 + 1), 0, handle_length + 2))
+)
 
-# Connector
-connector = cq.Workplane("XY").circle(connector_diameter / 2).extrude(connector_length)
-connector = connector.translate((0, 0, handle_length / 2 - connector_length / 2))
-
-# Handle
-handle = cq.Workplane("XY").circle(handle_diameter / 2).extrude(handle_length)
-handle = handle.translate((0, 0, -handle_length / 2))
-
-# Position head
-head = head.translate((0, 0, handle_length / 2 + connector_length / 2))
-
-# Union
-result = head.union(connector).union(handle)
+result = hammer.cut(claw_cutter)
 ```

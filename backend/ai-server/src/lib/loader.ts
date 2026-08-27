@@ -32,10 +32,8 @@ export const ALL_REFERENCES = [
   'references/selectors.md',
   'references/holes-cuts.md',
   'references/transformations.md',
-  'references/export-patterns.md',
   'references/error-recovery.md',
   'references/assembly-patterns.md',
-  'references/free-function-api.md',
   'references/sketch-api.md',
   'references/parameter-system.md',
 ];

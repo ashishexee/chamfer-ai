@@ -37,6 +37,19 @@ function sendSSE(res: Response, event: string, data: unknown) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
+// Retry feedback categories that already carry their own targeted
+// instructions (vision verdicts, geometry diagnostics, missing-code
+// notices). These bypass the generic RETRY_TEMPLATE — re-classifying them
+// would produce a mismatched "fix hint".
+const TARGETED_RETRY_CATEGORIES = new Set(['VISION_FIX', 'GEOMETRY_FEEDBACK', 'NO_CODE']);
+
+function buildTargetedRetry(feedback: string, code: string): string {
+  const codeBlock = code && code.length > 0
+    ? `\n\nThe code from the previous attempt:\n\n\`\`\`python\n${code}\n\`\`\`\n`
+    : '';
+  return `${feedback}${codeBlock}\nFix ONLY what is broken — the smallest change possible. Return ONLY a JSON object with keys "code", "parameters", "description", "tags". No thinking text. Start with '{' and end with '}'.`;
+}
+
 interface CadResult {
   success: boolean;
   error?: string;
@@ -225,10 +238,12 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
     }
   }
   
-  addMessageToSession(session.id, userMessage);
+  // Snapshot the LLM history BEFORE appending the current message, so the
+  // prompt is sent exactly once (as the current user message) — capturing
+  // after the append would include it here too and double-prompt the model.
+  const sessionHistory: SessionMessage[] = [...session.messages];
 
-  // Build session history for LLM
-  const sessionHistory: SessionMessage[] = session.messages;
+  addMessageToSession(session.id, userMessage);
 
   // If edit mode, include previous code context
   let previousCodeForRetry: string | undefined;
@@ -250,12 +265,22 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
     // Build error feedback for retry
     let errorFeedback: string | undefined;
     if (attempt > 0 && lastError) {
-      const { category, hint } = classifyError(lastError);
-      lastErrorCategory = category;
-      errorFeedback = RETRY_TEMPLATE
-        .replace('{error_message}', lastError)
-        .replace('{code}', code);
-      console.log(`[ROUTE] Retry ${attempt}: ${category} error`);
+      if (TARGETED_RETRY_CATEGORIES.has(lastErrorCategory)) {
+        // Vision verdicts / geometry diagnostics / no-code notices already
+        // contain targeted instructions — pass them through with the code
+        // instead of re-classifying into the generic template.
+        errorFeedback = buildTargetedRetry(lastError, code);
+        console.log(`[ROUTE] Retry ${attempt}: ${lastErrorCategory} (targeted feedback)`);
+      } else {
+        const { category, hint } = classifyError(lastError);
+        lastErrorCategory = category;
+        errorFeedback = RETRY_TEMPLATE
+          .replace('{error_message}', lastError)
+          .replace('{error_class}', category)
+          .replace('{hint}', hint)
+          .replace('{code}', code);
+        console.log(`[ROUTE] Retry ${attempt}: ${category} error`);
+      }
     } else if (editMode && previousCodeForRetry && attempt === 0) {
       // Edit mode: include previous code as context for the first attempt
       errorFeedback = `Previous code:\n\n\`\`\`python\n${previousCodeForRetry}\n\`\`\`\n\nThe user wants to modify this design. Please update the code according to the new request: "${effectivePrompt}". Return the complete updated JSON with all fields (code, parameters, description, tags).`;
@@ -268,6 +293,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         sessionHistory,
         previousCode: attempt > 0 ? code : (editMode ? previousCodeForRetry : undefined),
         errorFeedback,
+        repair: attempt > 0,
         providerId,
         callbacks: attempt === 0 ? {
           onReasoning: (chunk) => sendSSE(res, 'reasoning', { chunk }),
@@ -316,7 +342,8 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       }
 
       if (!code || code.length < 20) {
-        lastError = 'No Python code found in response (or code too short)';
+        lastError = 'Your previous response did not contain valid Python code in the "code" field. Output ONLY a JSON object where "code" is a complete CadQuery Python script (as a JSON string).';
+        lastErrorCategory = 'NO_CODE';
         stepError('generate', 'No Python code found in response');
         sendSSE(res, 'retry', { reason: lastError, category: 'NO_CODE', hint: 'Output JSON with a valid "code" field.' });
         continue;
@@ -330,6 +357,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       const astResult = await fastSyntaxCheck(code);
       if (!astResult.valid) {
         lastError = astResult.error || 'Syntax check failed';
+        lastErrorCategory = 'SYNTAX';
         stepError('syntax', lastError.slice(0, 100));
         console.log(`[ROUTE] AST check failed: ${lastError.slice(0, 120)}`);
         sendSSE(res, 'retry', { reason: lastError, category: 'SYNTAX', hint: 'Fix Python syntax error.', attempt: attempt + 1 });
@@ -409,6 +437,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
           console.log(`[ROUTE] Validation/inspection issues — feeding back to LLM`);
           step('repair', 'wrench', 'Repairing model', `Fixing ${inspection?.errors?.length || 0} geometry issues and retrying`);
           lastError = allFeedback;
+          lastErrorCategory = 'GEOMETRY_FEEDBACK';
           sendSSE(res, 'validation-warning', {
             warnings: validation?.warnings || [],
             inspection,

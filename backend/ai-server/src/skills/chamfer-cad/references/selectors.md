@@ -6,7 +6,7 @@ Selectors allow you to select one or more features to define new features. Think
 
 ## Collection Methods
 
-```python
+```text
 .vertices(selector)   # Select vertices
 .edges(selector)      # Select edges
 .faces(selector)      # Select faces
@@ -43,15 +43,18 @@ Selectors allow you to select one or more features to define new features. Think
 | `%ARC`     | Edges of type arc              |
 
 ```python
-result = box.faces(">Y").edges("%CIRCLE")   # Select all circular edges
-result = box.faces("%Plane")                 # Select all planar faces
+import cadquery as cq
+
+box = cq.Workplane("XY").box(10, 10, 10)
+circular_edges = box.faces(">Y").edges("%CIRCLE")   # Select all circular edges
+planar_faces = box.faces("%Plane")                  # Select all planar faces
 ```
 
 ## Combining Selectors
 
 Selectors can be combined with `and`, `or`, `not`, and `exc` (except/difference):
 
-```python
+```text
 .edges("|Z and >Y").chamfer(0.2)                     # Parallel Z AND farthest Y
 .edges("not(<X or >X or <Y or >Y)")                  # NOT on X or Y faces
 .edges(">(-1, 1, 0)").chamfer(1)                     # User-defined direction vector
@@ -62,11 +65,15 @@ Selectors can be combined with `and`, `or`, `not`, and `exc` (except/difference)
 ## Topological Selectors
 
 ```python
+import cadquery as cq
+
+box = cq.Workplane("XY").box(10, 10, 10)
+
 # Ancestors: find containing objects of current selection
-result = box.faces(">Z").edges("<Y").ancestors("Face")
+ancestor_faces = box.faces(">Z").edges("<Y").ancestors("Face")
 
 # Siblings: find connected objects of the same type
-result = box.faces(">Z").siblings("Edge")
+sibling_edges = box.faces(">Z").siblings("Edge")
 ```
 
 ## User-defined Directions

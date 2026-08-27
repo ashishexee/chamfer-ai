@@ -73,15 +73,18 @@ When generating code, include parameters in the JSON response:
 
 ### Parameter Schema Fields
 
+Only `int` and `float` parameters are supported. The update endpoint performs
+regex substitution of numeric literals in the code — booleans, strings,
+enums, and colors cannot be substituted and must not be declared.
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | string | Yes | One of: `int`, `float`, `bool`, `string`, `enum`, `color` |
-| `default` | number/string/bool | Yes | Default value |
-| `min` | number | For int/float | Minimum value |
-| `max` | number | For int/float | Maximum value |
-| `step` | number | For int/float | Step size for sliders |
+| `type` | string | Yes | One of: `int`, `float` |
+| `default` | number | Yes | Default value |
+| `min` | number | Yes | Minimum value |
+| `max` | number | Yes | Maximum value |
+| `step` | number | Yes | Step size for sliders |
 | `description` | string | No | Human-readable description |
-| `options` | array | For enum | Array of string choices |
 
 ## Parameter Extraction (Server-Side)
 

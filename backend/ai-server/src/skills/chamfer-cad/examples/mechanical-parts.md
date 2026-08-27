@@ -70,7 +70,7 @@ bracket_width = 50.0     # [20:5:150]
 bracket_thickness = 5.0  # [1:0.5:15]
 hole_diameter = 6.0      # [2:0.5:20]
 hole_offset = 10.0       # [5:1:30]
-fillet_radius = 1.5      # [0:0.5:10]
+fillet_radius = 1.5      # [0.5:0.5:10]
 
 # Horizontal leg
 base = cq.Workplane("XY").box(bracket_length, bracket_width, bracket_thickness, centered=True)

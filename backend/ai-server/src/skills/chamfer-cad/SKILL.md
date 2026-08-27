@@ -31,17 +31,31 @@ Your ENTIRE response must be a single valid JSON object. NOTHING else.
 }
 ```
 
+## Sandbox Contract (Hard Limits)
+
+Your code runs in a locked-down Docker container. These limits are enforced — violating any of them crashes the run:
+
+1. **`result` must be a Workplane (or Shape) — NEVER a `cq.Assembly`.** The server wraps your geometry for rendering itself. Returning an Assembly crashes the exporter.
+2. **Name the final variable `result`.** Never use `r` as a variable name — the runner looks up `r` before `result`, and `r` collides with the radius idiom.
+3. **Only `import cadquery as cq` and `import math` are allowed.** Every other import (`os`, `sys`, `OCP`, `cadquery.func`, `ezdxf`, ...) raises `ImportError: module '...' is not permitted in the sandbox`.
+4. **No files, no network, no `open()`, no `class` statements** (the sandbox has no `__build_class__`). Use plain functions for helpers.
+5. **No export calls** (`.export()`, `exportStl`, `exportStep`, ...). The server exports STL/STEP/GLB for you — just produce a clean, closed, positive-volume solid. There is also no way to import existing STEP/DXF files; construct all geometry in code.
+6. **Resource limits:** 30 second timeout, 1 GB RAM, 1 CPU, read-only filesystem. Keep boolean tool counts modest (≤ ~8 cutters per operation) and avoid extremely dense patterns — long-running geometry is killed.
+7. **Multi-part designs:** build each part as a positioned solid and `.union()` them into ONE `result`. If parts must remain separate (e.g., bolt + nut shown side by side), keep a clearance gap ≥ 0.1 mm between them and join them as a Compound (see `references/assembly-patterns.md`).
+8. **Honest descriptions:** the `description` field must match what the code actually models. If you could not implement a requested feature, say so in the description instead of claiming it.
+
 ## Code Structure Requirements
 
 1. Start with: `import cadquery as cq`
 2. Define all adjustable parameters as Python variables at the top
-3. Use descriptive snake_case variable names
+3. Use descriptive snake_case variable names — never single letters
 4. Build order: base body → cuts/holes → fillets/chamfers (LAST)
 5. Assign final geometry to variable: `result = ...`
 6. Do NOT call `show_object()`, `display()`, or any exporters
 7. Do NOT write to files or use network
 8. Only import `cadquery as cq` (and `math` if needed)
 9. All dimensions are in millimeters
+10. Extend cutting tools 1–2 mm beyond the faces they cut through — coplanar boolean faces are a leading cause of boolean failures
 
 ## Parameter Annotation Format
 
@@ -52,6 +66,8 @@ hole_dia = 8.0    # [2:1:30]    — float with min:step:max
 thickness = 5.0   # [1:1:50]    — float with min:step:max
 ```
 
+Only `int` and `float` parameters are supported. See `references/parameter-system.md` for the full contract.
+
 ## Default Assumptions
 
 - Units: millimeters
@@ -59,14 +75,19 @@ thickness = 5.0   # [1:1:50]    — float with min:step:max
 - Base plane: XY
 - Up/extrusion axis: positive Z
 - Output: closed, positive-volume solids
+- Unspecified enclosure walls: 2.0–3.0 mm
+- Cosmetic fillets when unspecified: 1.0–3.0 mm
+- Clearance holes if a screw size is named but no diameter given: M3→3.4, M4→4.5, M5→5.5, M6→6.6, M8→9.0 mm
+- Explicit dimensions from the user ALWAYS override these defaults
 
 ## Self-Correction Protocol
 
 If you receive an error message:
 1. Fix ONLY the broken part — smallest change possible
-2. Do NOT rewrite the entire model unless necessary
-3. Return the complete JSON with corrected code
-4. Do NOT explain what you fixed
+2. Do NOT rewrite the entire model unless the error says the approach is fundamentally broken
+3. One classified cause → one targeted fix. Never shotgun-rewrite on a retry.
+4. Return the complete JSON with corrected code
+5. Do NOT explain what you fixed
 
 ---
 
@@ -74,31 +95,33 @@ If you receive an error message:
 
 ## How Routing Works
 
-When a user provides a prompt, you MUST analyze it and load ONLY the relevant reference files. This saves tokens and keeps context focused.
+The server ALWAYS preloads `references/cadquery-api.md` together with this file — you never need to request it. On repair attempts, `references/error-recovery.md` is also preloaded automatically.
+
+For everything else: analyze the user's prompt and request ONLY the relevant files via the `context_needed` protocol at the bottom. This keeps context focused. Never request a file you already have (the server rejects duplicate requests).
 
 ## Step 1: Classify the User's Request
 
 Read the user's prompt and determine:
 - **What are they trying to make?** (part type, features)
-- **What CadQuery operations will this require?** (holes, patterns, assemblies, etc.)
-- **Are they fixing an error?** (error recovery mode)
+- **What CadQuery operations will this require?** (holes, patterns, multi-body, etc.)
+- **Are they fixing an error?** (error recovery mode — error-recovery.md is preloaded on repair attempts)
 
-## Step 2: Load Relevant Files
+## Step 2: Request Relevant Files
 
-Based on your classification, load files from this catalog:
+Based on your classification, request files from this catalog:
 
 ---
 
 ### CATALOG: Reference Files
 
-Each file below describes its contents, when to load it, and what keywords trigger it.
+Each file below describes its contents, when to request it, and what keywords trigger it.
 
 ---
 
-#### `references/cadquery-api.md`
+#### `references/cadquery-api.md` *(preloaded — never request)*
 **CONTENTS:** Core Workplane API — creation, 2D drawing (rect, circle, lines, arcs, splines, offset2D), 3D primitives (box, cylinder, sphere, wedge), extrude, revolve, loft, sweep, holes, fillets, chamfers, shell, patterns (pushPoints, rarray, polarArray), boolean operations (union, cut, intersect), tags, shape query methods, BREP topology, stack navigation, context solid, combine=False, toPending, extrude-until-face, workplaneFromTagged, multimethod warning.
 
-**WHEN TO LOAD:** ALWAYS — this is the core reference. Load this for every CadQuery generation task.
+**WHEN TO LOAD:** ALWAYS — preloaded by the server for every generation task.
 
 **KEYWORDS:** cadquery, workplane, box, cylinder, sphere, extrude, revolve, loft, sweep, hole, fillet, chamfer, shell, pattern, array, boolean, union, cut, intersect, tag, selector, face, edge, vertex, wire, solid
 
@@ -131,53 +154,35 @@ Each file below describes its contents, when to load it, and what keywords trigg
 
 ---
 
-#### `references/export-patterns.md`
-**CONTENTS:** Supported export formats (STEP, STL, glTF/GLB, AMF, 3MF, SVG, DXF, TJS, VRML), exporting STEP (simple, non-default extensions, options, units), exporting STL (quality, tolerance, ASCII), exporting glTF/GLB (assemblies only), exporting SVG (options), exporting DXF (2D sections), importing files (STEP, DXF, Assembly), assembly export (default, fused, naming, metadata), common export pitfalls (GLB-only-works-on-Assembly, DXF-only-works-on-2D-sections, file-extension-recognition).
+#### `references/error-recovery.md` *(preloaded on repair attempts)*
+**CONTENTS:** The repair loop discipline (classify → smallest responsible change) and the complete error taxonomy: 19 categories covering fillet/chamfer failures, boolean failures and boolean cost, build-order errors, wire/topology errors, loft/sweep failures, selectors, syntax, types, math, imports, timeouts, memory, assertions, and missing-result errors — each with patterns and fixes.
 
-**WHEN TO LOAD:** When the user wants to export to a specific format, import existing CAD files, or when the code generation needs to produce exportable output. Also when troubleshooting export issues.
+**WHEN TO LOAD:** When fixing an error from a previous generation. Preloaded automatically on repair attempts — do not request it there.
 
-**KEYWORDS:** export, import, STEP, STL, GLB, glTF, DXF, SVG, file format, download, save, convert, importStep, importDXF, assembly export, fused mode
-
----
-
-#### `references/error-recovery.md`
-**CONTENTS:** 13 specific error patterns with fixes: fillet/chamfer on empty selection, fillet radius too large, boolean operation failures, coplanar face errors, missing result variable, using show_object(), using cq.math, wrong translate syntax, wrong rotate syntax, missing close() before extrude, selector issues with non-planar faces, workplane orientation, import errors. Error classification table for auto-repair (15 categories with patterns and hints).
-
-**WHEN TO LOAD:** When the user reports an error from a previous generation, when code fails to execute, or when troubleshooting CadQuery issues. This is critical for the self-correction loop.
-
-**KEYWORDS:** error, fix, repair, failed, crash, BRep, fillet failed, boolean failed, selector failed, syntax error, no solid, no wire, translate error, rotate error, close before extrude, cq.math, show_object, coplanar, workplane orientation
+**KEYWORDS:** error, fix, repair, failed, crash, BRep, fillet failed, boolean failed, selector failed, syntax error, no solid, no wire, translate error, rotate error, close before extrude, cq.math, show_object, coplanar, workplane orientation, loft failed, timed out
 
 ---
 
 #### `references/assembly-patterns.md`
-**CONTENTS:** Basic assembly (Assembly, add, color), color options (named colors, RGBA), positioning with Locations, positioning with constraints and solver, constraint types (Point, Axis, Plane, PointInPlane, PointOnLine, Fixed, FixedPoint, FixedRotation, FixedAxis), constraint selector syntax, tagging faces/edges for constraints, assembly export, assembly example (door with V-slot profiles).
+**CONTENTS:** Multi-body modeling — union of positioned solids into one result, helper functions for repeated parts, positioning with translate/rotate, Compound construction for parts that must stay separate (clearance-gap rule), when NOT to use cq.Assembly.
 
-**WHEN TO LOAD:** When the user wants to create multi-part models, assemblies with constraints, or when working with colored components. Also when importing assemblies from STEP files.
+**WHEN TO LOAD:** When the user wants multi-part models, several components in one output, or parts positioned relative to each other.
 
-**KEYWORDS:** assembly, multi-part, constraint, mate, color, part, component, Location, Assembly, solve, point, axis, plane, fixed, position, joint, V-slot, profile
-
----
-
-#### `references/free-function-api.md`
-**CONTENTS:** Free function API — primitives (segment, circle, plane, box, cone, cylinder, sphere, torus), boolean operations (fuse, cut, intersect), shape construction (wire, face, solid, compound), operations (extrude, sweep, loft, revolve, chamfer, fillet, offset, hollow, draft, prism), placement (move, moved), text on curves/surfaces, parametric trimming (trim, edgeOn, wireOn, faceOn).
-
-**WHEN TO LOAD:** When the user needs advanced control beyond the fluent API, when creating complex free-form geometry, when the fluent API can't express the desired shape, or when working with parametric surfaces.
-
-**KEYWORDS:** free function, advanced, Shape, compound, prism, draft, hollow, fill, cap, edgeOn, wireOn, faceOn, trim, parametric, text on surface, spline surface, helix
+**KEYWORDS:** assembly, multi-part, component, part, position, multiple parts, bolt and nut, grouped, combined parts, mate
 
 ---
 
 #### `references/sketch-api.md`
-**CONTENTS:** Sketch class — face-based API (rect, circle, ellipse, trapezoid, slot, regularPolygon, polygon, face), modes (a=add, s=subtract, i=intersect, r=replace, c=construction), selection (faces, edges, vertices, reset, tag, select), modifiers (fillet, chamfer, clean, offset, hull), arrays (rarray, parray, distribute, push, each), edge-based API (segment, arc, spline, close, assemble), constraint-based sketches (FixedPoint, Coincident, Angle, Length, Distance, Radius, Orientation, ArcAngle), workplane integration (sketch, finalize, placeSketch, loft between sketches, combining sketches, sketch offsets), export/import DXF.
+**CONTENTS:** Sketch class — face-based API (rect, circle, ellipse, trapezoid, slot, regularPolygon, polygon, face), modes (a=add, s=subtract, i=intersect, r=replace, c=construction), selection (faces, edges, vertices, reset, tag, select), modifiers (fillet, chamfer, clean, offset, hull), arrays (rarray, parray, distribute, push, each), edge-based API (segment, arc, spline, close, assemble), constraint-based sketches (FixedPoint, Coincident, Angle, Length, Distance, Radius, Orientation, ArcAngle), workplane integration (sketch, finalize, placeSketch, loft between sketches, combining sketches, sketch offsets).
 
-**WHEN TO LOAD:** When the user needs complex 2D profiles with face-based boolean construction, when the fluent API's rect/circle/extrude pattern is insufficient, when creating sketches with constraints, or when working with DXF files.
+**WHEN TO LOAD:** When the user needs complex 2D profiles with face-based boolean construction, when the fluent API's rect/circle/extrude pattern is insufficient, when creating sketches with constraints, or for advanced profile work.
 
-**KEYWORDS:** sketch, profile, 2D, face-based, constraint, boolean sketch, hull, edge-based, segment, arc, assemble, sketch mode, DXF, sketch export, sketch import, placeSketch, finalize, sketch offset
+**KEYWORDS:** sketch, profile, 2D, face-based, constraint, boolean sketch, hull, edge-based, segment, arc, assemble, sketch mode, placeSketch, finalize, sketch offset
 
 ---
 
 #### `references/parameter-system.md`
-**CONTENTS:** Parameter annotation format ([min:step:max]), JSON response schema (type, default, min, max, step, description, options), parameter extraction (server-side regex), best practices (define at top, descriptive names, units in description, reasonable ranges), parameter update flow.
+**CONTENTS:** Parameter annotation format ([min:step:max]), JSON response schema (type, default, min, max, step, description), the exact assignment format the parameter substitution supports, best practices (define at top, descriptive names, units in description, reasonable ranges, derive-don't-drift), parameter update flow.
 
 **WHEN TO LOAD:** When the user wants adjustable parameters, sliders, configurability, or when defining the parameter schema for the JSON response. Always relevant for parametric models.
 
@@ -187,7 +192,7 @@ Each file below describes its contents, when to load it, and what keywords trigg
 
 ### CATALOG: Example Files
 
-Each file below contains code examples for specific types of models.
+Each file below contains complete, executable code examples for specific types of models.
 
 ---
 
@@ -219,32 +224,31 @@ Each file below contains code examples for specific types of models.
 ---
 
 #### `examples/assemblies.md`
-**CONTENTS:** Simple assembly with locations, assembly with constraints, assembly with tags, reusable component functions.
+**CONTENTS:** Multi-body models: stacked parts fused with union, side-by-side parts kept separate as a Compound, positioned pin patterns, reusable component functions.
 
-**WHEN TO LOAD:** When the user wants multi-part models, assemblies, or when components need to be positioned relative to each other.
+**WHEN TO LOAD:** When the user wants multi-part models, or when components need to be positioned relative to each other in one output.
 
-**KEYWORDS:** assembly, multi-part, component, part, location, constraint, mate, color, grouped, combined parts
+**KEYWORDS:** assembly, multi-part, component, part, location, multiple bodies, color, grouped, combined parts
 
 ---
 
-## Step 3: Load Order
+## Step 3: Request Order
 
-When loading multiple files, use this order:
+When requesting multiple files, use this order:
 
 ```
-1. SKILL.md (this file — always loaded)
-2. references/cadquery-api.md (always loaded)
-3. Task-specific references (based on routing)
-4. Relevant examples (based on routing)
+1. Task-specific references (based on routing)
+2. Relevant examples (based on routing)
 ```
+
+(SKILL.md and references/cadquery-api.md are always present; error-recovery.md is added automatically on repair attempts.)
 
 ## Step 4: Fallback Rule
 
 If the user's prompt is ambiguous or doesn't clearly match any specific reference:
-1. Always load `references/cadquery-api.md` (core API)
-2. Load `references/error-recovery.md` (error patterns)
-3. Load 1-2 example files that seem most relevant
-4. Ask for clarification if the request is too vague
+1. Generate with what you have (the core API reference is always loaded)
+2. Request 1-2 example files that seem most relevant if the part type is unfamiliar
+3. Ask for clarification if the request is too vague
 
 ---
 
@@ -252,13 +256,18 @@ If the user's prompt is ambiguous or doesn't clearly match any specific referenc
 
 - NEVER use `cq.math` — use Python's `math` module
 - NEVER call `.fillet()` or `.chamfer()` on edges smaller than the radius
+- NEVER return a `cq.Assembly` as `result` — the exporter crashes on it
+- NEVER name a variable `r` — use `result` for the shape and full names for radii
+- NEVER use `class` statements — the sandbox has no `__build_class__`; use functions
 - ALWAYS extrude main body BEFORE cutting holes or adding fillets
 - `.translate()` takes ONE tuple: `.translate((x, y, z))`
 - `.rotate()` takes `(start, end, angle)`: `.rotate((0,0,0), (0,0,1), 90)`
 - For circular edges, use `%CIRCLE` selector
 - `.close()` is required before `.extrude()` when drawing custom profiles
 - `.toPending()` is required before `.loft()` when using selected wires
-- Don't use keyword arguments for positional params in multimethod calls (e.g., `arc()`)
+- `revolve()` axis points are in WORKPLANE-LOCAL coordinates, not world coordinates
+- Boolean cutters must fully overlap the target — extend them 1–2 mm past the faces
+- Don't use keyword arguments for positional params in multimethod calls (e.g., Sketch `arc()`)
 
 ---
 
@@ -289,7 +298,9 @@ Output the normal code JSON:
 ## Rules:
 
 - Only request files listed in the CATALOG section above
-- Don't request files you already have in context
+- NEVER request `references/cadquery-api.md` (always preloaded)
+- NEVER request `references/error-recovery.md` on a repair attempt (auto-preloaded)
+- Don't request files you already have in context — duplicates are rejected
 - For simple tasks (box, cylinder), you may not need extra files
 - For complex tasks, request the specific references you need
 - Maximum 2 context requests per generation

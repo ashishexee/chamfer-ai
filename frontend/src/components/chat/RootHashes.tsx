@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Copy, Check, Loader2, Hash, ExternalLink, Download } from 'lucide-react';
 import { API_URL } from '@/lib/constants';
 
@@ -39,16 +39,20 @@ const FILE_META: { key: keyof RootHashData; label: string; ext: string; isBase64
   { key: 'dimViews', label: 'Dim Views', ext: 'json', isBase64: false },
 ];
 
-function truncateHash(hash: string): string {
-  if (hash.length <= 16) return hash;
-  return `${hash.slice(0, 10)}...${hash.slice(-6)}`;
+function truncateHashParts(hash: string): { start: string; end: string } {
+  if (hash.length <= 16) return { start: hash, end: '' };
+  return { start: hash.slice(0, 10), end: hash.slice(-6) };
 }
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === 'uploading') return <Loader2 className="h-3 w-3 text-adam-blue animate-spin" />;
-  if (status === 'done') return <Check className="h-3 w-3 text-emerald-400" />;
-  return <div className="w-1.5 h-1.5 rounded-full bg-adam-neutral-600" />;
+  if (status === 'uploading') return <Loader2 className="h-3.5 w-3.5 text-adam-blue animate-spin" />;
+  if (status === 'done') return <Check className="h-3.5 w-3.5 text-emerald-400" />;
+  return <div className="w-2 h-2 rounded-full bg-adam-neutral-500" />;
 }
+
+// Quiet actions: bare icons that come alive only on hover — no borders, no boxes.
+const ACTION_CLS =
+  'p-1.5 rounded-md text-adam-text-tertiary hover:text-adam-blue hover:bg-white/[0.06] transition-all active:scale-95 disabled:opacity-40';
 
 function HashRow({ label, hash, txSeq, ext, isBase64 }: {
   label: string;
@@ -94,48 +98,60 @@ function HashRow({ label, hash, txSeq, ext, isBase64 }: {
     }
   };
 
+  const { start, end } = truncateHashParts(hash);
+
   return (
-    <div className="flex items-center justify-between gap-3 px-3.5 py-2 group/row hover:bg-white/[0.01] transition-all duration-200">
-      <span className="text-[10px] font-semibold text-adam-text-tertiary uppercase tracking-wider w-20 shrink-0">{label}</span>
-      <span className="text-[10.5px] font-mono text-adam-text-secondary/90 truncate flex-1" title={hash}>
-        {truncateHash(hash)}
-      </span>
-      <div className="flex items-center gap-1 shrink-0">
-        <a
-          href={explorerUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="p-1.5 rounded-lg hover:bg-adam-blue/10 text-adam-text-tertiary hover:text-adam-blue transition-all active:scale-95"
-          title="View on 0G Explorer"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </a>
-        <button
-          onClick={download}
-          disabled={downloading}
-          className="p-1.5 rounded-lg hover:bg-adam-blue/10 text-adam-text-tertiary hover:text-adam-blue transition-all active:scale-95 disabled:opacity-40"
-          title="Download from 0G"
-        >
-          {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-        </button>
-        <button
-          onClick={copy}
-          className="p-1.5 rounded-lg hover:bg-adam-blue/10 text-adam-text-tertiary hover:text-adam-blue transition-all active:scale-95"
-          title="Copy full hash"
-        >
-          {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-        </button>
+    <div className="px-4 py-2.5 hover:bg-white/[0.03] transition-colors duration-150">
+      <div className="flex items-center gap-3">
+        <span className="text-[10.5px] font-semibold text-adam-text-secondary uppercase tracking-wider">{label}</span>
+        <div className="flex items-center gap-0.5 ml-auto shrink-0">
+          <a
+            href={explorerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={ACTION_CLS}
+            title="View on 0G Explorer"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+          <button
+            onClick={download}
+            disabled={downloading}
+            className={ACTION_CLS}
+            title="Download from 0G"
+          >
+            {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            onClick={copy}
+            className={ACTION_CLS}
+            title="Copy full hash"
+          >
+            {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
+        </div>
       </div>
+      <button
+        onClick={copy}
+        title={`${hash} — click to copy`}
+        className="mt-1.5 flex items-center w-full text-left font-mono text-[13px] tabular-nums tracking-tight truncate text-adam-text-primary/95 hover:opacity-80 transition-opacity cursor-pointer"
+      >
+        <span className="shrink-0">{start}</span>
+        <span className="mx-1.5 shrink-0 text-adam-text-secondary tracking-[0.06em] select-none">······</span>
+        {end && <span className="shrink-0 text-adam-blue/85">{end}</span>}
+      </button>
     </div>
   );
 }
 
 function ProgressRow({ label, status }: { label: string; status: string }) {
   return (
-    <div className="flex items-center gap-3 px-3.5 py-2 hover:bg-white/[0.01] transition-all">
-      <StatusIcon status={status} />
-      <span className="text-[10px] font-semibold text-adam-text-tertiary uppercase tracking-wider w-20 shrink-0">{label}</span>
-      <span className={`text-[10px] flex-1 ${status === 'uploading' ? 'text-adam-blue' : status === 'done' ? 'text-adam-text-tertiary' : 'text-adam-text-tertiary/40'}`}>
+    <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.03] transition-colors">
+      <span className="w-6 shrink-0 flex justify-center">
+        <StatusIcon status={status} />
+      </span>
+      <span className="w-24 shrink-0 text-[10.5px] font-semibold text-adam-text-secondary uppercase tracking-wider">{label}</span>
+      <span className={`text-[11.5px] flex-1 ${status === 'uploading' ? 'text-adam-blue' : status === 'done' ? 'text-adam-text-secondary' : 'text-adam-text-tertiary'}`}>
         {status === 'uploading' && <span>Uploading to <span className="text-adam-blue font-semibold">0G</span>...</span>}
         {status === 'done' && 'Stored'}
         {status === 'skipped' && 'No data'}
@@ -145,22 +161,36 @@ function ProgressRow({ label, status }: { label: string; status: string }) {
   );
 }
 
+function Header({ icon, title, count }: { icon: ReactNode; title: ReactNode; count?: ReactNode }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      {icon}
+      <span className="font-title font-bold text-[12px] text-white uppercase tracking-widest">{title}</span>
+      {count && (
+        <span className="ml-auto text-[10px] font-semibold text-adam-text-secondary tabular-nums bg-white/[0.05] border border-white/[0.06] rounded-full px-2 py-0.5">
+          {count}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function RootHashes({ hashes, txSeqs, loading, progress }: RootHashesProps) {
   // Progressive upload mode — show per-file status
   const isUploading = loading && progress && Object.keys(progress).length > 0;
 
+  const cardCls = 'mt-3 rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-md overflow-hidden shadow-[0_8px_24px_-12px_rgba(0,0,0,0.5)]';
+
   if (isUploading) {
-    const doneCount = Object.values(progress).filter(p => p.status === 'done' || p.status === 'skipped').length;
+    const doneCount = Object.values(progress!).filter(p => p.status === 'done' || p.status === 'skipped').length;
     return (
-      <div className="mt-3 rounded-xl border border-white/[0.05] bg-white/[0.015] backdrop-blur-md overflow-hidden shadow-lg">
-        <div className="px-3.5 py-2.5 border-b border-white/[0.04] bg-white/[0.02]">
-          <div className="flex items-center gap-2">
-            <Loader2 className="h-3.5 w-3.5 text-adam-blue animate-spin" />
-            <span className="font-title font-bold text-adam-text-tertiary uppercase tracking-widest">
-              Uploading to <span className="font-sans font-bold text-adam-blue">0G</span> Storage
-            </span>
-            <span className="text-[9px] text-adam-text-tertiary ml-auto tabular-nums">{doneCount}/5</span>
-          </div>
+      <div className={cardCls}>
+        <div className="px-4 py-3 border-b border-white/[0.05] bg-white/[0.02]">
+          <Header
+            icon={<Loader2 className="h-4 w-4 text-adam-blue animate-spin" />}
+            title={<>Uploading to <span className="font-sans font-bold text-adam-blue">0G</span> Storage</>}
+            count={`${doneCount}/5`}
+          />
           {/* Progress bar */}
           <div className="mt-2.5 h-1 rounded-full bg-white/[0.06] overflow-hidden">
             <div
@@ -171,7 +201,7 @@ export function RootHashes({ hashes, txSeqs, loading, progress }: RootHashesProp
         </div>
         <div className="divide-y divide-white/[0.04]">
           {FILE_META.map(({ key, label }) => {
-            const p = progress[key];
+            const p = progress![key];
             return <ProgressRow key={key} label={label} status={p?.status || 'pending'} />;
           })}
         </div>
@@ -181,14 +211,9 @@ export function RootHashes({ hashes, txSeqs, loading, progress }: RootHashesProp
 
   if (loading) {
     return (
-      <div className="mt-3 rounded-xl border border-white/[0.05] bg-white/[0.015] backdrop-blur-md overflow-hidden shadow-lg">
-        <div className="px-3.5 py-2.5 border-b border-white/[0.04] bg-white/[0.02]">
-          <div className="flex items-center gap-2">
-            <Loader2 className="h-3.5 w-3.5 text-adam-blue animate-spin" />
-            <span className="font-title font-bold text-adam-text-tertiary uppercase tracking-widest">
-              Root hashes loading...
-            </span>
-          </div>
+      <div className={cardCls}>
+        <div className="px-4 py-3 border-b border-white/[0.05] bg-white/[0.02]">
+          <Header icon={<Loader2 className="h-4 w-4 text-adam-blue animate-spin" />} title="Root hashes loading..." />
         </div>
       </div>
     );
@@ -200,15 +225,13 @@ export function RootHashes({ hashes, txSeqs, loading, progress }: RootHashesProp
   if (entries.length === 0) return null;
 
   return (
-    <div className="mt-3 rounded-xl border border-white/[0.05] bg-white/[0.015] backdrop-blur-md overflow-hidden shadow-lg">
-      <div className="px-3.5 py-2.5 border-b border-white/[0.04] bg-white/[0.02]">
-        <div className="flex items-center gap-2">
-          <Hash className="h-3.5 w-3.5" style={{ color: '#00A6FF' }} />
-          <span className="font-title font-bold text-adam-text-primary tracking-widest uppercase">
-            Storage Root Hashes
-          </span>
-          <span className="text-[9px] text-adam-text-tertiary ml-auto">{entries.length} files</span>
-        </div>
+    <div className={cardCls}>
+      <div className="px-4 py-3 border-b border-white/[0.05] bg-white/[0.02]">
+        <Header
+          icon={<Hash className="h-4 w-4 text-adam-blue" />}
+          title="Storage Root Hashes"
+          count={`${entries.length} files`}
+        />
       </div>
       <div className="divide-y divide-white/[0.04]">
         {entries.map(({ key, label, ext, isBase64 }) => (
@@ -225,4 +248,3 @@ export function RootHashes({ hashes, txSeqs, loading, progress }: RootHashesProp
     </div>
   );
 }
-

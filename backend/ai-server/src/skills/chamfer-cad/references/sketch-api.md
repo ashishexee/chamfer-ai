@@ -4,12 +4,17 @@
 
 The Sketch class provides a constraint-based 2D drawing API. It can be used standalone or within a Workplane.
 
+A bare `cq.Sketch()` is NOT a valid `result` for this pipeline — the runner
+needs a Workplane. Wrap finished sketches with
+`cq.Workplane("XY").placeSketch(sketch).extrude(...)` (or use the in-place
+`.sketch() ... .finalize()` form shown further down).
+
 ## Basic Sketch (Face-Based API)
 
 ```python
 import cadquery as cq
 
-result = (
+sketch = (
     cq.Sketch()
     .trapezoid(4, 3, 90)
     .vertices()
@@ -21,6 +26,7 @@ result = (
     .rarray(0.6, 1, 5, 1)
     .slot(1.5, 0.4, mode="s", angle=90)
 )
+result = cq.Workplane("XY").placeSketch(sketch).extrude(1)
 ```
 
 ## Modes
@@ -36,7 +42,9 @@ Every face-based operation accepts a `mode` parameter:
 | `c`  | Construction | Reference only (requires tag) |
 
 ```python
-result = (
+import cadquery as cq
+
+sketch = (
     cq.Sketch()
     .rect(1, 2, mode="c", tag="base")
     .vertices(tag="base")
@@ -48,11 +56,12 @@ result = (
     .rect(2, 2, mode="i")
     .clean()
 )
+result = cq.Workplane("XY").placeSketch(sketch).extrude(1)
 ```
 
 ## Face-Based Operations
 
-```python
+```text
 .rect(w, h, angle=0, mode="a")        # Rectangle
 .circle(r, mode="a")                   # Circle
 .ellipse(a1, a2, angle=0, mode="a")    # Ellipse
@@ -65,7 +74,7 @@ result = (
 
 ## Selection
 
-```python
+```text
 .faces(s=None, tag=None)     # Select faces
 .edges(s=None, tag=None)     # Select edges
 .vertices(s=None, tag=None)  # Select vertices
@@ -77,7 +86,7 @@ result = (
 
 ## Modifiers
 
-```python
+```text
 .fillet(d)                   # Fillet based on selection
 .chamfer(d)                  # Chamfer based on selection
 .clean()                     # Remove internal wires
@@ -87,7 +96,7 @@ result = (
 
 ## Arrays
 
-```python
+```text
 .rarray(xs, ys, nx, ny)     # Rectangular array of locations
 .parray(r, a1, da, n, rotate=True) # Polar array
 .distribute(n, start=0, stop=1, rotate=True) # Distribute along edges
@@ -100,7 +109,9 @@ result = (
 For constructing sketches by placing individual edges:
 
 ```python
-result = (
+import cadquery as cq
+
+sketch = (
     cq.Sketch()
     .segment((0.0, 0), (0.0, 2.0))
     .segment((2.0, 0))
@@ -111,10 +122,12 @@ result = (
     .vertices()
     .chamfer(0.2)
 )
+result = cq.Workplane("XY").placeSketch(sketch).extrude(1)
 ```
 
 Edge operations:
-```python
+
+```text
 .segment(p1, p2, tag=None)   # Line segment
 .arc(...)                     # Arc (multiple overloads)
 .spline(pts, tag=None)        # Spline
@@ -125,7 +138,9 @@ Edge operations:
 ## Constraint-Based Sketches (Experimental)
 
 ```python
-result = (
+import cadquery as cq
+
+sketch = (
     cq.Sketch()
     .segment((0, 0), (0, 3.0), "s1")
     .arc((0.0, 3.0), (1.5, 1.5), (0.0, 0.0), "a1")
@@ -136,6 +151,7 @@ result = (
     .solve()
     .assemble()
 )
+result = cq.Workplane("XY").placeSketch(sketch).extrude(1)
 ```
 
 ### Constraint Types
@@ -156,6 +172,8 @@ result = (
 ### In-Place Sketch
 
 ```python
+import cadquery as cq
+
 result = (
     cq.Workplane()
     .box(5, 5, 1)
@@ -173,6 +191,8 @@ result = (
 ### Placing Existing Sketch
 
 ```python
+import cadquery as cq
+
 s = cq.Sketch().trapezoid(3, 1, 110).vertices().fillet(0.2)
 
 result = (
@@ -189,6 +209,8 @@ result = (
 ### Lofting Between Sketches
 
 ```python
+import cadquery as cq
+
 s1 = cq.Sketch().trapezoid(3, 1, 110).vertices().fillet(0.2)
 s2 = cq.Sketch().rect(2, 1).vertices().fillet(0.2)
 
@@ -198,33 +220,41 @@ result = cq.Workplane().placeSketch(s1, s2.moved(z=3)).loft()
 ### Combining Sketches
 
 ```python
+import cadquery as cq
+
 s1 = cq.Sketch().rect(2, 2)
 s2 = cq.Sketch().circle(0.5)
 
-result = s1.face(s2, mode='s')
+sketch = s1.face(s2, mode="s")
+result = cq.Workplane("XY").placeSketch(sketch).extrude(1)
 ```
 
 ### Boolean Operations on Sketches
 
 ```python
+import cadquery as cq
+
 s1 = cq.Sketch().rect(2, 2).vertices().fillet(0.25).reset()
 s2 = cq.Sketch().rect(1, 1, angle=45).vertices().chamfer(0.1).reset()
 
-result = s1 - s2   # Difference
-result = s1 + s2   # Union
-result = s1 * s2   # Intersection
+difference = s1 - s2   # Difference
+union = s1 + s2        # Union
+sketch = s1 * s2       # Intersection
+result = cq.Workplane("XY").placeSketch(sketch).extrude(1)
 ```
 
 ### Sketch Offsets
 
 ```python
+import cadquery as cq
+
 sketch = cq.Sketch().rect(1.0, 4.0).circle(1.0).clean()
 
 # Offset outward
 sketch_offset = sketch.copy().wires().offset(0.25)
 
 # Offset inward
-sketch_offset = sketch.copy().wires().offset(-0.25, mode='r')
+sketch_offset = sketch.copy().wires().offset(-0.25, mode="r")
 ```
 
 ## Supported Workplane Operations with Sketches
@@ -240,7 +270,10 @@ After creating a sketch on a Workplane, these operations are supported:
 
 ## Export/Import
 
-```python
+DXF import/export is not usable in this pipeline: the sandbox has no input
+files to import, and the runner exports STEP/STL/GLB itself.
+
+```text
 # Export sketch to DXF
 sketch.export("output.dxf")
 

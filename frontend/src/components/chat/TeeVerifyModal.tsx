@@ -96,14 +96,14 @@ export function TeeVerifyModal({ onClose, providerAddress, chatId, model, expect
         initial={{ opacity: 0, scale: 0.96, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.18 }}
-        className="w-full max-w-md rounded-2xl border border-white/[0.07] bg-[#0b0d10] shadow-2xl overflow-hidden"
+        className="w-full max-w-lg rounded-2xl border border-white/[0.07] bg-[#0b0d10] shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.05] bg-white/[0.02]">
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-emerald-400" />
-            <span className="font-title font-bold text-emerald-400 tracking-widest uppercase text-[11px]">TEE Verification</span>
+            <span className="font-title font-bold text-emerald-400 tracking-widest uppercase text-[13px]">TEE Verification</span>
           </div>
           <button onClick={onClose} className="p-1 rounded-md hover:bg-white/[0.05] text-adam-text-tertiary hover:text-white transition-all" title="Close">
             <X className="h-4 w-4" />
@@ -120,7 +120,7 @@ export function TeeVerifyModal({ onClose, providerAddress, chatId, model, expect
         {/* Body */}
         <div className="px-4 pb-3">
           {running && (
-            <div className="flex items-center gap-2.5 py-4 text-[11px] text-adam-text-secondary">
+            <div className="flex items-center gap-2.5 py-4 text-[13px] text-adam-text-secondary">
               <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-400" />
               Re-running verification against the provider and the 0G chain…
             </div>
@@ -128,13 +128,13 @@ export function TeeVerifyModal({ onClose, providerAddress, chatId, model, expect
 
           {!running && error && (
             <div className="py-3">
-              <div className="flex items-start gap-2 text-[11px] text-red-400 bg-red-400/[0.06] ring-1 ring-red-400/15 rounded-lg px-3 py-2.5">
+              <div className="flex items-start gap-2 text-[13px] text-red-400 bg-red-400/[0.06] ring-1 ring-red-400/15 rounded-lg px-3 py-2.5">
                 <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                 <span>Verification could not run: {error}</span>
               </div>
               <button
                 onClick={run}
-                className="mt-2.5 w-full flex items-center justify-center gap-1.5 text-[10px] text-adam-text-tertiary hover:text-emerald-400 transition-colors py-1.5 rounded-md hover:bg-emerald-400/[0.05]"
+                className="mt-2.5 w-full flex items-center justify-center gap-1.5 text-[12.5px] text-adam-text-tertiary hover:text-emerald-400 transition-colors py-1.5 rounded-md hover:bg-emerald-400/[0.05]"
               >
                 <RefreshCw className="h-3 w-3" /> Try again
               </button>
@@ -160,11 +160,11 @@ export function TeeVerifyModal({ onClose, providerAddress, chatId, model, expect
                       <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
                     )}
                     <div className="min-w-0">
-                      <div className={`text-[11px] ${step.pass === false ? 'text-red-400' : step.pass === true ? 'text-white/90' : 'text-amber-400'}`}>
+                      <div className={`text-[13px] ${step.pass === false ? 'text-red-400' : step.pass === true ? 'text-white' : 'text-amber-400'}`}>
                         {step.label}
                       </div>
                       {step.detail && (
-                        <div className="text-[9.5px] font-mono text-adam-text-tertiary/70 truncate mt-0.5" title={step.detail}>
+                        <div className="text-[12px] font-mono text-adam-text-secondary truncate mt-0.5" title={step.detail}>
                           {step.detail}
                         </div>
                       )}
@@ -174,13 +174,13 @@ export function TeeVerifyModal({ onClose, providerAddress, chatId, model, expect
               </div>
 
               {verdict && (
-                <div className={`mt-3 flex items-center gap-2 text-[11px] rounded-lg px-3 py-2.5 ring-1 ${verdict.cls}`}>
+                <div className={`mt-3 flex items-center gap-2 text-[13px] rounded-lg px-3 py-2.5 ring-1 ${verdict.cls}`}>
                   {verdict.icon}
                   <span>{verdict.text}</span>
                 </div>
               )}
               {resp.detail && resp.status !== 'verified' && (
-                <div className="mt-1.5 text-[9.5px] text-adam-text-tertiary/70 px-1">{resp.detail}</div>
+                <div className="mt-1.5 text-[12px] text-adam-text-secondary px-1">{resp.detail}</div>
               )}
             </>
           )}
@@ -191,7 +191,7 @@ export function TeeVerifyModal({ onClose, providerAddress, chatId, model, expect
           {resp?.receipt && (
             <button
               onClick={handleCopyReceipt}
-              className="flex items-center gap-1.5 text-[10px] text-adam-text-tertiary hover:text-emerald-400 transition-colors py-1 px-2 rounded-md hover:bg-emerald-400/[0.05]"
+              className="flex items-center gap-1.5 text-[12.5px] text-adam-text-tertiary hover:text-emerald-400 transition-colors py-1 px-2 rounded-md hover:bg-emerald-400/[0.05]"
               title="Copy the full verification receipt (JSON) to share or re-verify elsewhere"
             >
               {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
@@ -200,7 +200,7 @@ export function TeeVerifyModal({ onClose, providerAddress, chatId, model, expect
           )}
           <button
             onClick={onClose}
-            className="text-[10px] text-adam-text-tertiary hover:text-white transition-colors py-1 px-3 rounded-md hover:bg-white/[0.05]"
+            className="text-[12.5px] text-adam-text-tertiary hover:text-white transition-colors py-1 px-3 rounded-md hover:bg-white/[0.05]"
           >
             Close
           </button>
@@ -214,8 +214,8 @@ export function TeeVerifyModal({ onClose, providerAddress, chatId, model, expect
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-[9.5px] font-semibold text-adam-text-tertiary uppercase tracking-wider w-16 shrink-0">{label}</span>
-      <span className="text-[10.5px] font-mono text-adam-text-secondary/90 truncate">{value}</span>
+      <span className="text-[12px] font-semibold text-adam-text-secondary uppercase tracking-wider w-20 shrink-0">{label}</span>
+      <span className="text-[13px] font-mono text-adam-text-secondary truncate">{value}</span>
     </div>
   );
 }

@@ -1,277 +1,135 @@
-# CadQuery Assembly Patterns
+# Multi-Body & Positioning Patterns
 
-## Basic Assembly
+The sandbox exports ONE `result` (Workplane/Shape). `cq.Assembly` cannot be
+exported by the runner — returning one crashes the pipeline. Use the patterns
+below to build multi-part designs as a single result.
 
-```python
-import cadquery as cq
+## Rule: One Result, Many Bodies
 
-part1 = cq.Workplane().box(20, 20, 10)
-part2 = cq.Workplane().box(10, 10, 20)
+| Situation | Pattern |
+|-----------|---------|
+| Parts touch or overlap (mug + handle, bracket + legs) | `.union()` into one solid |
+| Parts must stay separate (bolt next to nut) | Compound with a clearance gap ≥ 0.1 mm |
+| Complex placement of many parts | `cq.Assembly` as a positioning HELPER, then `.toCompound()` |
 
-assy = (
-    cq.Assembly()
-    .add(part1, name="base", color=cq.Color("red"))
-    .add(part2, name="post", color=cq.Color(0, 0, 1, 0.5))
-)
-```
+## Pattern 1: Union of Positioned Solids
 
-## Color Options
-
-```python
-# Named colors (X11 color names)
-cq.Color("red")
-cq.Color("green")
-cq.Color("blue")
-cq.Color("black")
-cq.Color("yellow")
-cq.Color("orange")
-
-# RGBA (0.0 to 1.0)
-cq.Color(1, 0, 0)          # Red, opaque
-cq.Color(0, 0, 1, 0.5)     # Blue, 50% transparent
-cq.Color(1, 1, 0, 0.2)     # Yellow, 20% transparent
-```
-
-## Positioning with Locations
-
-```python
-# Explicit locations (relative to parent)
-assy = (
-    cq.Assembly(part1, loc=cq.Location(cq.Vector(0, 0, 0)), name="part1")
-    .add(part2, loc=cq.Location(cq.Vector(10, 0, 5)), color=cq.Color("red"))
-)
-
-# Location with rotation
-# cq.Location(position, axis_vector, angle_degrees)
-assy.add(part, loc=cq.Location((0, 0, 0), (1, 0, 0), 180))
-```
-
-## Positioning with Constraints and Solver
-
-```python
-# Define constraints then solve
-assy = (
-    cq.Assembly(part1, name="part1")
-    .add(part2, name="part2", color=cq.Color("blue"))
-    .constrain("part1@faces@>Z", "part2@faces@<Z", "Plane")
-    .constrain("part1@faces@>Y", "part2@faces@<Y", "Axis")
-    .solve()
-)
-```
-
-## Constraint Types
-
-| Constraint      | Description                                        |
-|-----------------|----------------------------------------------------|
-| `Point`         | Two points coincident (or separated by distance)   |
-| `Axis`          | Two normals anti-coincident (mate) or at angle     |
-| `Plane`         | Combination of Point + Axis (coincident planes)    |
-| `PointInPlane`  | Point lies on a plane (with optional offset)       |
-| `PointOnLine`   | Point lies on a line (with optional offset)        |
-| `Fixed`         | Fix position and rotation of an object             |
-| `FixedPoint`    | Fix position to a specific point                   |
-| `FixedRotation` | Fix rotation to specific angles                    |
-| `FixedAxis`     | Fix orientation of normal/tangent to a vector      |
-
-## Constraint Selector Syntax
-
-```python
-# String syntax: "name@type@selector" or "name?tag"
-.constrain("part1@faces@>Z", "part2@faces@<Z", "Plane")
-.constrain("part1?myTag", "part2?otherTag", "Point")
-
-# With param (e.g., offset distance or angle)
-.constrain("part1@faces@>Z", "part2@faces@<Z", "Axis", param=0)  # Same direction
-.constrain("part1", "part2", "Point", param=5)                   # 5 units apart
-
-# Fixed constraint (locks all DOF)
-.constrain("part1", "Fixed")
-```
-
-## Tagging Faces/Edges for Constraints
-
-```python
-# Tag faces/edges in the part definition for easy constraint reference
-def make_connector():
-    rv = (
-        cq.Workplane()
-        .box(20, 20, 20)
-        .faces("<X")
-        .workplane()
-        .cboreHole(6, 15, 18)
-        .faces("<Z")
-        .workplane(centerOption="CenterOfMass")
-        .cboreHole(6, 15, 18)
-    )
-
-    # tag mating faces
-    rv.faces(">X").tag("X").end()
-    rv.faces(">Z").tag("Z").end()
-
-    return rv
-
-# Then in constraints:
-.constrain("left?Z", "con_bl?Z", "Plane")
-```
-
-## Assembly Export
-
-```python
-# Export assembly to STEP (preserves colors and names)
-assy.export("assembly.step")
-
-# Fused mode (single solid, preserves color info)
-assy.export("assembly_fused.step", mode="fused")
-
-# Export to glTF/GLB (for web rendering -- preserves colors!)
-assy.export("assembly.glb")
-assy.export("assembly.gltf")
-```
-
-## Assembly Example: Door with V-Slot Profiles
+Build each part, position it with `.translate()` / `.rotate()`, then fuse.
+Parts must actually overlap (or at least touch) — extend mating features
+1 mm into each other so the boolean has real volume to work with.
 
 ```python
 import cadquery as cq
 
-# Parameters
-H = 400
-W = 200
-D = 350
+base = cq.Workplane("XY").box(40, 20, 10)
+boss = cq.Workplane("XY").cylinder(12, 4).translate((10, 0, 5 + 6 - 1))
+result = base.union(boss)
+```
 
-PROFILE = cq.importers.importDXF("vslot-2020_1.dxf").wires()
+For repeated features, use a helper function plus a loop:
 
-SLOT_D = 5
-PANEL_T = 3
+```python
+import cadquery as cq
 
-HANDLE_D = 20
-HANDLE_L = 50
-HANDLE_W = 4
+def make_post(height, diameter):
+    return cq.Workplane("XY").cylinder(height, diameter / 2).translate((0, 0, height / 2))
 
+plate = cq.Workplane("XY").box(60, 30, 5)
+result = plate
+for x in (-20, 0, 20):
+    result = result.union(make_post(15, 6).translate((x, 0, 2.5 - 1)))
+```
 
-def make_vslot(l):
-    return PROFILE.toPending().extrude(l)
+## Pattern 2: Compound for Separate Parts
 
+When parts must remain distinct bodies, keep a gap ≥ 0.1 mm between them
+(touching faces may fuse or create non-manifold edges), then combine with
+`cq.Compound.makeCompound` and wrap in a Workplane via `newObject`:
 
-def make_connector():
-    rv = (
-        cq.Workplane()
-        .box(20, 20, 20)
-        .faces("<X")
-        .workplane()
-        .cboreHole(6, 15, 18)
-        .faces("<Z")
-        .workplane(centerOption="CenterOfMass")
-        .cboreHole(6, 15, 18)
-    )
+```python
+import cadquery as cq
 
-    # tag mating faces
-    rv.faces(">X").tag("X").end()
-    rv.faces(">Z").tag("Z").end()
+part_a = cq.Workplane("XY").box(10, 10, 10)
+part_b = cq.Workplane("XY").box(5, 5, 5).translate((20, 0, 0))
 
-    return rv
+result = cq.Workplane("XY").newObject(
+    [cq.Compound.makeCompound([part_a.val(), part_b.val()])]
+)
+```
 
+Notes:
+- `.val()` extracts the Solid from each Workplane before compounding.
+- Compounds export cleanly to STL/STEP/GLB and keep each solid separate.
+- Never call `.union()` on parts you want to keep separate — it fuses them.
 
-def make_panel(w, h, t, cutout):
-    rv = (
-        cq.Workplane("XZ")
-        .rect(w, h)
-        .extrude(t)
-        .faces(">Y")
-        .vertices()
-        .rect(2 * cutout, 2 * cutout)
-        .cutThruAll()
-        .faces("<Y")
-        .workplane()
-        .pushPoints([(-w / 3, HANDLE_L / 2), (-w / 3, -HANDLE_L / 2)])
-        .hole(3)
-    )
+## Pattern 3: Assembly as a Positioning Helper
 
-    # tag mating edges
-    rv.faces(">Y").edges("%CIRCLE").edges(">Z").tag("hole1")
-    rv.faces(">Y").edges("%CIRCLE").edges("<Z").tag("hole2")
+`cq.Assembly` with `cq.Location` is the most readable way to place many parts,
+especially with rotations. Convert to a Compound at the end:
 
-    return rv
+```python
+import cadquery as cq
 
+part_a = cq.Workplane("XY").box(20, 20, 20)
+part_b = cq.Workplane("XY").box(10, 10, 4)
+part_c = cq.Workplane("XY").box(4, 4, 12)
 
-def make_handle(w, h, r):
-    pts = ((0, 0), (w, 0), (w, h), (0, h))
-
-    path = cq.Workplane().polyline(pts)
-
-    rv = (
-        cq.Workplane("YZ")
-        .rect(r, r)
-        .sweep(path, transition="round")
-        .tag("solid")
-        .faces("<X")
-        .workplane()
-        .faces("<X", tag="solid")
-        .hole(r / 1.5)
-    )
-
-    # tag mating faces
-    rv.faces("<X").faces(">Y").tag("mate1")
-    rv.faces("<X").faces("<Y").tag("mate2")
-
-    return rv
-
-
-# define the elements
-door = (
+assy = (
     cq.Assembly()
-    .add(make_vslot(H), name="left")
-    .add(make_vslot(H), name="right")
-    .add(make_vslot(W), name="top")
-    .add(make_vslot(W), name="bottom")
-    .add(make_connector(), name="con_tl", color=cq.Color("black"))
-    .add(make_connector(), name="con_tr", color=cq.Color("black"))
-    .add(make_connector(), name="con_bl", color=cq.Color("black"))
-    .add(make_connector(), name="con_br", color=cq.Color("black"))
-    .add(
-        make_panel(W + SLOT_D, H + SLOT_D, PANEL_T, SLOT_D),
-        name="panel",
-        color=cq.Color(0, 0, 1, 0.2),
-    )
-    .add(
-        make_handle(HANDLE_D, HANDLE_L, HANDLE_W),
-        name="handle",
-        color=cq.Color("yellow"),
-    )
+    .add(part_a, name="body")
+    .add(part_b, name="lid", loc=cq.Location(cq.Vector(0, 0, 25)))
+    .add(part_c, name="arm", loc=cq.Location(cq.Vector(10, 0, 0), cq.Vector(0, 1, 0), 45))
 )
+result = cq.Workplane("XY").newObject([assy.toCompound()])
+```
 
-# define the constraints
-(
-    door
-    # left profile
-    .constrain("left@faces@<Z", "con_bl?Z", "Plane")
-    .constrain("left@faces@<X", "con_bl?X", "Axis")
-    .constrain("left@faces@>Z", "con_tl?Z", "Plane")
-    .constrain("left@faces@<X", "con_tl?X", "Axis")
-    # top
-    .constrain("top@faces@<Z", "con_tl?X", "Plane")
-    .constrain("top@faces@<Y", "con_tl@faces@>Y", "Axis")
-    # bottom
-    .constrain("bottom@faces@<Y", "con_bl@faces@>Y", "Axis")
-    .constrain("bottom@faces@>Z", "con_bl?X", "Plane")
-    # right connectors
-    .constrain("top@faces@>Z", "con_tr@faces@>X", "Plane")
-    .constrain("bottom@faces@<Z", "con_br@faces@>X", "Plane")
-    .constrain("left@faces@>Z", "con_tr?Z", "Axis")
-    .constrain("left@faces@<Z", "con_br?Z", "Axis")
-    # right profile
-    .constrain("right@faces@>Z", "con_tr@faces@>Z", "Plane")
-    .constrain("right@faces@<X", "left@faces@<X", "Axis")
-    # panel
-    .constrain("left@faces@>X[-4]", "panel@faces@<X", "Plane")
-    .constrain("left@faces@>Z", "panel@faces@>Z", "Axis")
-    # handle
-    .constrain("panel?hole1", "handle?mate1", "Plane")
-    .constrain("panel?hole2", "handle?mate2", "Point")
-)
+`cq.Location(position, axis, angle_degrees)` places a part at `position`,
+rotated `angle` degrees around `axis`.
 
-# solve
-door.solve()
+Colors passed to `.add(..., color=...)` are LOST by `toCompound()` — the
+pipeline currently renders single-material output, so do not promise colors
+in the description.
 
-# export
-door.export("door.step")
+## Positioning Quick Reference
+
+```text
+.translate((x, y, z))                       # move by vector (ONE tuple)
+.rotate((0,0,0), (0,0,1), 90)               # rotate: axisStart, axisEnd, angle
+cq.Location(cq.Vector(x, y, z))             # position only (Assembly helper)
+cq.Location(pos_vec, axis_vec, angle_deg)   # position + rotation (Assembly helper)
+```
+
+## Selectors After Unions
+
+Boolean operations renumber the topology. After a union, prefer selecting by
+direction/axis (`.faces(">Z")`, `.edges("|Z")`) over tags or indices that were
+created before the union — tagged references can silently point at the wrong
+faces once geometry has been fused.
+
+## Anti-Patterns (these crash or waste the run)
+
+Returning an Assembly as `result` crashes the pipeline AFTER your code runs:
+the runner calls `cq.exporters.export(result)` and `result.val()`, and an
+Assembly supports neither.
+
+```python
+import cadquery as cq
+
+assy = cq.Assembly()
+assy.add(cq.Workplane("XY").box(10, 10, 10), name="part")
+# NEVER do this: result = assy
+# Convert first instead:
+result = cq.Workplane("XY").newObject([assy.toCompound()])
+```
+
+Calling `.export()` yourself is wasted work: the sandbox does not stop
+CadQuery from writing files, but anything you write is thrown away with the
+job directory. The runner exports `output.stl`, `output.step`, and
+`output.glb` on its own — just produce a clean `result`.
+
+```python
+import cadquery as cq
+
+result = cq.Workplane("XY").box(10, 10, 10)
+# result.export("my.step")  ← runs, but the file is discarded; never bother
 ```

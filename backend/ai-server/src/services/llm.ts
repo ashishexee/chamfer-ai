@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { spawn } from 'child_process';
 import { config } from '../config';
-import { buildInitialPrompt, buildPromptWithRefs, validateRequestedFiles } from '../lib/loader';
+import { buildPromptWithRefs, validateRequestedFiles } from '../lib/loader';
 import { CLARIFIER_SYSTEM_PROMPT } from './clarifier-prompt';
 import { normalizeChatId, verifyTEEResponse, type TeeStatus, type TeeSignatureReceipt } from '../0g/tee-verifier';
 
@@ -280,19 +280,19 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     },
   },
   {
-    patterns: ['no pending wires', 'no solid to cut from', 'cannot compound'],
+    patterns: ['no solid to cut from', 'cannot compound', 'cannot find a solid', 'nothing to loft'],
     failure: {
       category: 'BUILD_ORDER',
       priority: 'critical',
-      hint: 'Called an operation that needs a solid before creating one. Extrude first, then cut/fillet.',
+      hint: 'Called an operation that needs a solid (or pending wires) before creating one. Extrude the base body first, then cut/fillet. For loft/sweep of SELECTED wires, push them with .toPending().',
     },
   },
   {
-    patterns: ['no wire to close', 'cannot close wire'],
+    patterns: ['no wire to close', 'cannot close wire', 'no pending wires'],
     failure: {
       category: 'WIRE_NOT_CLOSED',
       priority: 'critical',
-      hint: 'Called .close() or .extrude() on an unclosed profile. Start with .moveTo() and end with .close().',
+      hint: 'Extrude/loft found no wire. Start custom profiles with .moveTo() and end with .close() before .extrude().',
     },
   },
   {
@@ -317,6 +317,22 @@ const ERROR_PATTERNS: ErrorPattern[] = [
       category: 'BOOLEAN_FAILURE',
       priority: 'critical',
       hint: 'Boolean operation failed. Check that solids overlap. Extend cutting tools beyond the target.',
+    },
+  },
+  {
+    patterns: ['fontname', 'font_', 'unable to find any font'],
+    failure: {
+      category: 'FONT_ERROR',
+      priority: 'critical',
+      hint: 'The sandbox has NO fonts installed — .text() always fails. Remove text/engraving features, model markings with primitives, or state in the description that text could not be rendered.',
+    },
+  },
+  {
+    patterns: ['is not permitted in the sandbox', '__build_class__', "name 'open' is not defined", 'show_object'],
+    failure: {
+      category: 'FORBIDDEN_BUILTIN',
+      priority: 'critical',
+      hint: 'Sandbox restrictions: only `import cadquery as cq` and `import math` are allowed; no open(), no class statements (use functions), no show_object(). Assign the final model to `result`.',
     },
   },
   {
@@ -360,11 +376,11 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     },
   },
   {
-    patterns: ['selector', 'no faces', 'no edges'],
+    patterns: ['selector', 'no faces', 'no edges', 'parseexception'],
     failure: {
       category: 'SELECTOR',
       priority: 'medium',
-      hint: 'Selector found no matching faces/edges. Use ">Z", "<Z", "|Z", "%CIRCLE".',
+      hint: 'Invalid selector or no matching faces/edges. Use documented selectors: ">Z", "<Z", "|Z", "#Z", "%CIRCLE", and/or/not combinators.',
     },
   },
   {
@@ -389,6 +405,22 @@ const ERROR_PATTERNS: ErrorPattern[] = [
       category: 'MATH_ERROR',
       priority: 'medium',
       hint: 'Math domain error — sqrt of negative, log of zero, or division by zero.',
+    },
+  },
+  {
+    patterns: ['timed out', 'timeout', 'killed', 'deadline exceeded'],
+    failure: {
+      category: 'TIMEOUT',
+      priority: 'high',
+      hint: 'Execution exceeded the 30s sandbox limit. Reduce feature counts per boolean (hole grids, pattern instances), simplify geometry, keep bounding size under ~10,000mm.',
+    },
+  },
+  {
+    patterns: ['memoryerror', 'out of memory', 'bad_alloc', 'cannot allocate'],
+    failure: {
+      category: 'MEMORY',
+      priority: 'high',
+      hint: 'Out of memory in the sandbox (1GB cap). Reduce feature density, pattern instance counts, and overall model size.',
     },
   },
   {
@@ -519,6 +551,8 @@ export interface GenerateOptions {
   sessionHistory?: SessionMessage[];
   previousCode?: string;
   errorFeedback?: string;
+  /** true on repair attempts — preloads references/error-recovery.md */
+  repair?: boolean;
   providerId?: string;
   callbacks?: StreamCallbacks;
 }
@@ -526,22 +560,29 @@ export interface GenerateOptions {
 export async function generateCadQueryCodeStream(
   options: GenerateOptions,
 ): Promise<LLMResult> {
-  const { prompt, images, sessionHistory, previousCode, errorFeedback, providerId, callbacks } = options;
+  const { prompt, images, sessionHistory, previousCode, errorFeedback, repair, providerId, callbacks } = options;
   const provider = config.providers[providerId || '0g'] || config.providers['0g'];
   const llm = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseUrl });
   const isZeroG = provider.isZeroG === true;
   const maxPhases = 3;
-  
-  // Track loaded files across phases
-  let loadedFiles: string[] = [];
-  
+
+  // Preloaded references — SKILL.md promises cadquery-api.md is ALWAYS present
+  // and error-recovery.md is added automatically on repair attempts. Starting
+  // loadedFiles with them makes that contract real and blocks duplicate
+  // requests for them via the context_needed protocol.
+  const preloaded = ['references/cadquery-api.md'];
+  if (repair) preloaded.push('references/error-recovery.md');
+  let loadedFiles: string[] = [...preloaded];
+
+  // Appended to the user message when the model requests only files it
+  // already has — nudges it to generate instead of looping on empty context.
+  let noNewFilesNudge = '';
+
   for (let phase = 1; phase <= maxPhases; phase++) {
-    console.log(`[LLM] Phase ${phase}/${maxPhases}`);
-    
-    // Build system prompt based on loaded files
-    const systemPrompt = loadedFiles.length === 0
-      ? buildInitialPrompt()
-      : buildPromptWithRefs(loadedFiles);
+    console.log(`[LLM] Phase ${phase}/${maxPhases} (refs loaded: ${loadedFiles.length})`);
+
+    // Build system prompt: SKILL.md + all loaded references
+    const systemPrompt = buildPromptWithRefs(loadedFiles);
     
     let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       { role: 'system', content: systemPrompt },
@@ -585,10 +626,10 @@ ${messageContent}`;
     if (images && images.length > 0) {
       messages.push({
         role: 'user',
-        content: buildVisionContent(prompt, images),
+        content: buildVisionContent(prompt + noNewFilesNudge, images),
       });
     } else {
-      messages.push({ role: 'user', content: prompt });
+      messages.push({ role: 'user', content: prompt + noNewFilesNudge });
     }
 
     // Log token counts
@@ -648,8 +689,11 @@ ${messageContent}`;
         .filter(f => !loadedFiles.includes(f));
 
       if (newFiles.length === 0) {
-        console.error(`[LLM] Context request but no new files available: ${contextNeeded.join(', ')}`);
-        continue; // Try again with same context
+        console.error(`[LLM] Context request but no new files available: ${contextNeeded.join(', ')} — nudging to generate`);
+        // Re-running with identical context would likely reproduce the same
+        // request; tell the model explicitly to produce code instead.
+        noNewFilesNudge = '\n\n[SYSTEM NOTE: All relevant reference files are already loaded — no additional context is available. Do not request more files. Output the complete JSON object with your CadQuery code now.]';
+        continue;
       }
 
       // Cache loaded files
