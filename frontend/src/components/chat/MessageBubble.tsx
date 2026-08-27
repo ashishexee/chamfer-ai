@@ -278,6 +278,9 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
   const isAssistant = message.role === 'assistant';
   const hasContent = isAssistant && message.content && !message.clarification;
   const isBestEffort = message.bestEffort;
+  const hasSpecifications =
+    (message.clarificationAnswers && message.clarificationAnswers.length > 0) ||
+    (message.specifications && message.specifications.length > 0);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
@@ -285,30 +288,66 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Specifications must not be rendered inside the "You" bubble. When the
+  // user answers clarification questions the stored message has role=user
+  // with clarificationAnswers/specifications — render those as a standalone
+  // card separate from the You avatar card so the chat reads as:
+  //   [You: original prompt] → [Specifications card] → [Assistant result]
+  if (isUser && hasSpecifications) {
+    const specifications = message.clarificationAnswers || message.specifications || [];
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: [0.25, 1, 0.5, 1] }}
+        className="space-y-1.5"
+      >
+        {message.images && message.images.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto">
+            {message.images.map((img, i) => (
+              <img
+                key={i}
+                src={img}
+                alt={`Reference ${i + 1}`}
+                className="w-20 h-20 rounded-lg object-cover border border-adam-neutral-700/30"
+              />
+            ))}
+          </div>
+        )}
+        <ClarificationAnswers specifications={specifications} />
+        {message.timestamp && (
+          <div className="px-1 text-[10px] text-adam-text-tertiary/60 tabular-nums">
+            {formatTime(message.timestamp)}
+          </div>
+        )}
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: [0.25, 1, 0.5, 1] }}
       className={cn(
-        'group relative rounded-xl border transition-colors',
+        'group relative overflow-hidden rounded-xl border backdrop-blur-md shadow-[0_8px_24px_-16px_rgba(0,0,0,0.6)] transition-colors',
         isUser
-          ? 'border-adam-neutral-700/25 bg-adam-neutral-800/25'
+          ? 'border-white/[0.06] bg-white/[0.02]'
           : isError
-          ? 'border-red-500/20 bg-red-500/[0.04]'
-          : 'border-adam-neutral-700/25 bg-adam-background-1/40'
+          ? 'border-red-500/15 bg-red-500/[0.04]'
+          : 'border-white/[0.06] bg-gradient-to-b from-white/[0.03] to-white/[0.015]'
       )}
     >
       {/* Header row */}
-      <div className="flex items-center gap-2.5 px-3.5 pt-3 pb-2">
+      <div className="flex items-center gap-2.5 border-b border-white/[0.04] bg-white/[0.015] px-3.5 py-3">
         {/* Avatar */}
         <div className={cn(
-          'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
+          'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ring-1',
           isUser
-            ? 'bg-adam-neutral-700/60 text-adam-text-secondary ring-1 ring-white/[0.04]'
+            ? 'bg-white/[0.06] text-adam-text-secondary ring-white/[0.06]'
             : isError
-            ? 'bg-red-500/15 text-red-400 ring-1 ring-red-500/15'
-            : 'bg-gradient-to-br from-adam-blue/25 to-adam-blue/[0.08] text-adam-blue ring-1 ring-adam-blue/20'
+            ? 'bg-red-500/10 text-red-400 ring-red-500/15'
+            : 'bg-adam-blue/10 text-adam-blue ring-adam-blue/15'
         )}>
           {isUser
             ? <User className="h-3.5 w-3.5" />
@@ -320,19 +359,19 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
         {/* Name + timestamp */}
         <div className="flex flex-1 items-center gap-2 min-w-0">
           <span className={cn(
-            'font-title font-bold truncate tracking-wide',
-            isUser ? 'text-adam-text-secondary' : isError ? 'text-red-400' : 'text-adam-text-primary'
+            'font-title text-[11px] font-bold tracking-[0.12em] truncate',
+            isUser ? 'text-white' : isError ? 'text-red-300' : 'text-white'
           )}>
-            {isUser ? 'You' : message.provider ? getProviderDisplayName(message.provider) : 'Chamfer AI'}
+            {isUser ? 'YOU' : message.provider ? getProviderDisplayName(message.provider).toUpperCase() : 'CHAMFER AI'}
           </span>
           {message.timestamp && (
-            <span className="text-[10px] text-adam-text-tertiary/70 shrink-0 tabular-nums">
+            <span className="shrink-0 rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] leading-none tabular-nums text-adam-text-tertiary ring-1 ring-white/[0.06]">
               {formatTime(message.timestamp)}
             </span>
           )}
           {!isUser && !isError && message.content && !message.bestEffort && (
-            <span className="hidden group-hover:block text-[9px] text-adam-text-tertiary/50">
-              · {message.visionVerified ? 'vision-verified' : 'generated'}
+            <span className="hidden rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-emerald-300 ring-1 ring-emerald-500/15 group-hover:inline-flex">
+              {message.visionVerified ? 'vision-verified' : 'generated'}
             </span>
           )}
         </div>
@@ -385,9 +424,14 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
           </div>
         )}
 
-        {(message.clarificationAnswers && message.clarificationAnswers.length > 0) || (message.specifications && message.specifications.length > 0) ? (
-          <ClarificationAnswers specifications={message.clarificationAnswers || message.specifications || []} />
-        ) : (
+        {/* Assistant message body. For best-effort failures we still get a
+            "Generated (best effort)..." content but the *meaningful* signal is
+            the Workflow — Executing CadQuery failed — and the yellow warning
+            below. Showing the canned best-effort line at the top pushes the
+            real error below the fold and reads as success-with-a-note, which
+            is exactly the complaint in the screenshot. Hide it when
+            bestEffort is set so the Workflow sits at the top. */}
+        {!(isAssistant && message.bestEffort) && (
           <div className={cn(
             'text-sm leading-relaxed',
             isError ? 'text-red-400/90' : 'text-adam-text-primary/95'
@@ -398,7 +442,7 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
 
         {/* Workflow Timeline */}
         {message.steps && message.steps.length > 0 && (
-          <div className="mt-2.5">
+          <div className={cn(message.bestEffort ? '' : 'mt-2.5')}>
             <WorkflowTimeline steps={message.steps} reasoning={message.reasoning} />
           </div>
         )}
@@ -479,8 +523,20 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
           <ZeroGMetadataPanel zeroG={message.zeroG} />
         )}
 
-        {/* Warning */}
-        {message.warning && (
+        {/* Best-effort failure detail — placed *after* the Workflow so the
+            timeline (including the red Executing CadQuery / API_ERROR line)
+            is the first thing the user sees. Previously the message.content
+            banner sat above the Workflow which buried the real error. */}
+        {isAssistant && message.bestEffort && message.content && (
+          <div className="mt-2.5 flex items-start gap-2 text-[11px] leading-relaxed text-adam-text-secondary bg-white/[0.025] rounded-lg px-3 py-2 ring-1 ring-white/[0.06]">
+            <AlertTriangle className="h-3.5 w-3.5 mt-px shrink-0 text-adam-text-tertiary" />
+            <span>{message.content}</span>
+          </div>
+        )}
+
+        {/* Warning — hidden on bestEffort because that muted banner is
+            redundant once we render the bestEffort detail above. */}
+        {message.warning && !message.bestEffort && (
           <div className="mt-2.5 flex items-start gap-2 text-[11px] text-yellow-400/90 bg-yellow-500/[0.05] rounded-lg px-3 py-2 ring-1 ring-yellow-500/10">
             <AlertTriangle className="h-3.5 w-3.5 mt-px shrink-0" />
             <span className="leading-relaxed">{message.warning}</span>

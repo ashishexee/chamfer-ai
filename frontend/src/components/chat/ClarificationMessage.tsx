@@ -44,18 +44,21 @@ export function ClarificationMessage({ questions, onSubmit, isGenerating }: Clar
   };
 
   return (
-    <div className="rounded-xl border border-adam-blue/15 bg-gradient-to-br from-adam-blue/[0.04] via-[#1a1a1a]/40 to-transparent p-3.5">
-      <div className="flex items-center gap-2 mb-3">
-        <div className="flex h-5 w-5 items-center justify-center rounded-md bg-adam-blue/15 text-adam-blue ring-1 ring-adam-blue/15">
-          <HelpCircle className="h-3 w-3" />
-        </div>
-        <span className="font-title font-bold text-adam-text-primary tracking-wider">Chamfer <span className="text-adam-blue font-sans font-extrabold">AI</span> needs more details</span>
+    <div className="overflow-hidden rounded-xl border border-white/[0.06] bg-gradient-to-b from-white/[0.03] to-white/[0.015] backdrop-blur-md shadow-[0_8px_24px_-16px_rgba(0,0,0,0.6)]">
+      <div className="flex items-center gap-2.5 border-b border-white/[0.05] bg-white/[0.02] px-3.5 py-3">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-adam-blue/10 text-adam-blue ring-1 ring-adam-blue/15">
+          <HelpCircle className="h-3.5 w-3.5" />
+        </span>
+        <span className="font-title text-[11px] font-bold tracking-[0.14em] text-white">SPECIFICATIONS NEEDED</span>
+        <span className="ml-auto rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-adam-text-secondary ring-1 ring-white/[0.06]">
+          {questions.length} {questions.length === 1 ? 'question' : 'questions'}
+        </span>
       </div>
 
-      <div className="space-y-3 mb-3">
+      <div className="space-y-3 bg-white/[0.015] px-3.5 py-3">
         {questions.map((q, i) => (
-          <div key={i}>
-            <label className="text-[10px] text-adam-text-secondary mb-1.5 block font-medium">
+          <div key={i} className="rounded-lg border border-white/[0.04] bg-white/[0.02] px-3 py-2.5">
+            <label className="mb-2 block text-[11.5px] font-medium leading-snug text-adam-text-primary/90">
               {q.question}
             </label>
             {q.options && q.options.length > 0 ? (
@@ -68,14 +71,14 @@ export function ClarificationMessage({ questions, onSubmit, isGenerating }: Clar
                       onClick={() => selectOption(q.key, opt)}
                       disabled={isGenerating}
                       className={cn(
-                        'px-2.5 py-1 rounded-md text-[11px] font-medium transition-all flex items-center gap-1',
+                        'inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[11.5px] font-medium transition-colors',
                         isSelected
-                          ? 'bg-adam-blue text-white border border-adam-blue/80 shadow-[0_2px_6px_rgba(0,166,255,0.18)]'
-                          : 'bg-adam-neutral-800/40 text-adam-text-secondary border border-adam-neutral-700/30 hover:bg-adam-neutral-700/40 hover:text-adam-text-primary hover:border-adam-neutral-600/40',
+                          ? 'border-adam-blue/30 bg-adam-blue text-white shadow-[0_2px_10px_rgba(0,166,255,0.18)]'
+                          : 'border-white/[0.06] bg-white/[0.04] text-adam-text-secondary hover:border-white/[0.10] hover:bg-white/[0.07] hover:text-white',
                         isGenerating && 'opacity-50 cursor-not-allowed'
                       )}
                     >
-                      {isSelected && <Check className="h-3 w-3" strokeWidth={3} />}
+                      {isSelected && <Check className="h-3 w-3" strokeWidth={2.5} />}
                       {opt}
                     </button>
                   );
@@ -85,7 +88,8 @@ export function ClarificationMessage({ questions, onSubmit, isGenerating }: Clar
                   value={customInputs[q.key] || ''}
                   onChange={e => setCustom(q.key, e.target.value)}
                   disabled={isGenerating}
-                  className="w-20 border border-adam-neutral-700/30 rounded-md px-2 py-1 text-[11px] bg-adam-bg-dark/40 text-adam-text-primary outline-none focus:border-adam-blue/50 focus:ring-1 focus:ring-adam-blue/10 placeholder:text-adam-text-tertiary/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  placeholder="Custom"
+                  className="h-7 w-24 rounded-full border border-white/[0.06] bg-[#0F1110] px-3 text-[11.5px] text-white outline-none placeholder:text-adam-text-tertiary/60 focus:border-adam-blue/30 focus:ring-2 focus:ring-adam-blue/10 transition-colors disabled:opacity-50"
                 />
               </div>
             ) : (
@@ -95,30 +99,30 @@ export function ClarificationMessage({ questions, onSubmit, isGenerating }: Clar
                 onChange={e => setSelections(prev => ({ ...prev, [q.key]: e.target.value }))}
                 onKeyDown={e => { if (e.key === 'Enter' && i === questions.length - 1 && !isGenerating) handleSubmit(); }}
                 disabled={isGenerating}
-                placeholder="Type your answer..."
+                placeholder="Type your answer…"
                 autoFocus={i === 0}
-                className="w-full border border-adam-neutral-700/30 rounded-md px-2.5 py-1.5 text-xs bg-adam-bg-dark/40 text-adam-text-primary outline-none focus:border-adam-blue/50 focus:ring-1 focus:ring-adam-blue/10 placeholder:text-adam-text-tertiary/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-8 w-full rounded-lg border border-white/[0.06] bg-[#0F1110] px-3 text-[12.5px] text-white outline-none placeholder:text-adam-text-tertiary/60 focus:border-adam-blue/30 focus:ring-2 focus:ring-adam-blue/10 transition-colors disabled:opacity-50"
               />
             )}
           </div>
         ))}
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 border-t border-white/[0.05] bg-white/[0.015] px-3.5 py-3">
         <button
           onClick={handleAllDecide}
           disabled={isGenerating}
-          className="flex-1 rounded-lg border border-adam-neutral-700/40 px-3 py-1.5 text-[11px] text-adam-text-secondary hover:bg-adam-neutral-800/50 hover:text-adam-text-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-2 text-[11.5px] font-medium text-adam-text-secondary hover:bg-white/[0.06] hover:text-white transition-colors disabled:opacity-50"
         >
-          Let model decide all
+          Let model decide
         </button>
         <button
           onClick={handleSubmit}
           disabled={isGenerating}
-          className="flex-1 rounded-lg bg-adam-blue px-3 py-1.5 text-[11px] text-white hover:bg-adam-blue/90 font-medium transition-all shadow-[0_2px_8px_rgba(0,166,255,0.2)] flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-adam-blue px-3 py-2 text-[11.5px] font-semibold text-white hover:bg-adam-blue/90 shadow-[0_4px_16px_rgba(0,166,255,0.22)] transition-colors disabled:opacity-50"
         >
-          <Sparkles className="h-3 w-3" />
-          {isGenerating ? 'Generating...' : 'Generate'}
+          <Sparkles className="h-3.5 w-3.5" />
+          {isGenerating ? 'Generating…' : 'Generate'}
         </button>
       </div>
     </div>

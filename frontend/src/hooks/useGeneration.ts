@@ -477,6 +477,16 @@ export function useGeneration(
 
         // Handle success
         if (finalData) {
+          // Persist the full model reasoning so the completed card shows the
+          // entire chain-of-thought, not just a "Thinking summary" assembled
+          // from step.detail strings. reasoningBufferRef accumulated every
+          // SSE `reasoning` chunk; finalData.reasoning carries the server's
+          // assembled value (preferred when present).
+          const finalReasoning =
+            (finalData.reasoning && String(finalData.reasoning).trim()) ||
+            reasoningBufferRef.current?.trim() ||
+            undefined;
+
           const assistantMsg: Message = {
             role: "assistant",
             content: finalData.bestEffort
@@ -485,6 +495,7 @@ export function useGeneration(
                 ? `Generated with ${getProviderDisplayName(finalData.provider || provider)} (vision-verified)`
                 : `Generated with ${getProviderDisplayName(finalData.provider || provider)}`,
             provider: finalData.provider,
+            reasoning: finalReasoning,
             dimViews:
               Object.keys(liveDimViews).length > 0
                 ? liveDimViews
@@ -588,7 +599,8 @@ export function useGeneration(
                 if (
                   savedSessionId &&
                   savedMessageOrder !== null &&
-                  finalData.code
+                  finalData.code &&
+                  !finalData.bestEffort
                 ) {
                   setModelStorageStatus("Starting 0G upload...");
                   uploadModelTo0G({
