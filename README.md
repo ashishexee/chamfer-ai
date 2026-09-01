@@ -122,19 +122,27 @@ chamferai/
 │   ├── ai-server/            # Express/TypeScript orchestration server
 │   │   ├── src/
 │   │   │   ├── index.ts              # Express app + route registration
-│   │   │   ├── config.ts             # LLM provider configs (10 providers)
+│   │   │   ├── config.ts             # LLM provider configs (13 providers)
 │   │   │   ├── middleware/auth.ts    # Wallet-address auth middleware
 │   │   │   ├── routes/
 │   │   │   │   ├── generate.ts       # SSE generation pipeline + param updates
 │   │   │   │   ├── chat.routes.ts    # Chat session save/list/history
 │   │   │   │   ├── auth.routes.ts    # Profile upsert on wallet connect
-│   │   │   │   └── models.routes.ts  # 0G upload/download + saved models CRUD
-│   │   │   └── services/
-│   │   │       ├── llm.ts            # LLM code generation, clarification, vision
-│   │   │       ├── prompt.ts         # System prompt for CadQuery generation
-│   │   │       ├── clarifier-prompt.ts # System prompt for clarification agent
-│   │   │       ├── db.ts             # Supabase queries (profiles, sessions, models)
-│   │   │       └── zgStorage.ts      # 0G Storage SDK (encrypted upload/download)
+│   │   │   │   ├── models.routes.ts  # 0G upload/download + saved models CRUD
+│   │   │   │   └── tee.routes.ts     # TEE signature verification
+│   │   │   ├── services/
+│   │   │   │   ├── llm.ts            # LLM code generation, error classification, repair
+│   │   │   │   ├── session.ts        # In-memory chat session store
+│   │   │   │   ├── context-manager.ts # Progressive context loading (skill references)
+│   │   │   │   ├── prompt-expander.ts # Default-dimension prompt expansion
+│   │   │   │   ├── vision.ts         # Vision inspection prompting
+│   │   │   │   ├── clarifier-prompt.ts # System prompt for clarification agent
+│   │   │   │   ├── db.ts             # Supabase queries (profiles, sessions, models)
+│   │   │   │   └── zgStorage.ts      # 0G Storage SDK (encrypted upload/download)
+│   │   │   ├── lib/                  # Skill loader + retry template
+│   │   │   ├── skills/               # chamfer-cad generation skill (SKILL.md + references + examples)
+│   │   │   ├── 0g/                   # TEE signature verifier
+│   │   │   └── scripts/              # Verification / receipt scripts
 │   │   └── package.json
 │   │
 │   └── cad-server/           # FastAPI/Python CAD execution server
@@ -207,20 +215,23 @@ chamferai/
 
 ### LLM Providers
 
-The server supports 10 providers via an OpenAI-compatible interface. For privacy-sensitive CAD work, **0G Compute** is the recommended provider:
+The server supports 13 providers via an OpenAI-compatible interface. For privacy-sensitive CAD work, **0G Compute** is the recommended provider:
 
 | Provider ID | Model | Vision | Notes |
 |-------------|-------|--------|-------|
-| `0g` | Qwen 2.5 Omni 7B | Yes | **0G Compute** — decentralized GPU marketplace. No data retention. Verifiable proofs. 90% cheaper than centralized providers. |
+| `0g` | 0GM-1.0-35B-A3B | Yes | **0G Compute** — decentralized GPU marketplace. No data retention. Verifiable proofs. 90% cheaper than centralized providers. |
+| `0g-deepseek` | DeepSeek V4 Flash | No | DeepSeek V4 Flash via the **0G** router — 1M context, TEE-verified |
 | `mimo` | MiMo 2.5 | Yes | Xiaomi MiMo, 310B (15B active) |
 | `mimo-pro` | MiMo 2.5 Pro | No | 1T (42B active) |
-| `deepseek-v4-flash` | DeepSeek V4 Flash | No | Fast, 1M context |
-| `deepseek-v4-pro` | DeepSeek V4 Pro | No | Pro reasoning, 1M context |
+| `deepseek-v4-flash` | DeepSeek V4 Flash | No | Fast, 1M context (Fireworks) |
+| `deepseek-v4-pro` | DeepSeek V4 Pro | No | Pro reasoning, 1M context (Fireworks) |
 | `qwen3p7-plus` | Qwen 3.7 Plus | Yes | 262K context |
 | `kimi-k2p6` | Kimi K2.6 | Yes | 262K context |
 | `minimax-m3` | MiniMax M3 | Yes | 512K context |
 | `glm-5p1` | GLM 5.1 | No | 202K context |
 | `glm-5p2` | GLM 5.2 | No | Opus-level, 1M context |
+| `groq` | Qwen3-32B | No | Groq LPU inference |
+| `groq-vision` | Llama 4 Scout | Yes | Groq LPU inference with vision |
 
 > **Why 0G Compute matters for CAD:** When an engineer describes a proprietary part design, that prompt contains trade secrets — dimensions, materials, tolerances. Centralized AI providers can log, analyze, and potentially leak those prompts. 0G Compute runs inference on a decentralized GPU marketplace with cryptographic verification — your design descriptions never touch a centralized server, and you pay only for actual compute used.
 
@@ -233,6 +244,7 @@ The server supports 10 providers via an OpenAI-compatible interface. For privacy
 | `GET` | `/api/providers` | No | List available LLM providers |
 | `GET` | `/api/health` | No | Health check |
 | `POST` | `/api/auth/verify` | Yes | Upsert profile on wallet connect |
+| `POST` | `/api/tee/verify` | Yes | Independently re-verify the 0G TEE signature of a response |
 | `POST` | `/api/chat/save` | Yes | Save chat session + messages |
 | `GET` | `/api/chat/sessions` | Yes | List user's chat sessions |
 | `GET` | `/api/chat/history/:sessionId` | Yes | Load session + messages |
@@ -259,7 +271,7 @@ All LLM-generated Python code is executed inside a **locked-down Docker containe
 | Security Measure | Value |
 |-----------------|-------|
 | Network | `none` (air-gapped, no internet) |
-| Memory limit | `2g` |
+| Memory limit | `1g` |
 | CPU | 1 core |
 | Timeout | 30 seconds |
 | User | `1000:1000` (non-root) |
@@ -294,7 +306,7 @@ graph TD
     B -->|"Clear"| C["STEP 1: ANALYZE"]
     C --> D["STEP 2: GENERATE"]
     D --> E["STEP 3: EXECUTE"]
-    E -->|"Failure"| ERR["Error classified → feedback to LLM → RETRY (up to 4x)"]
+    E -->|"Failure"| ERR["Error classified → feedback to LLM → RETRY (up to 3 attempts)"]
     ERR --> E
     E -->|"Success"| F["STEP 4: INSPECT"]
     F -->|"Geometry errors"| ERR
@@ -305,10 +317,11 @@ graph TD
 
 ### Retry Logic
 
-- **Max retries:** 4 attempts
-- On each failure, the error is classified (syntax, import, CadQuery API, geometry, vision) and a repair hint is generated
-- The LLM receives the error + hint and is asked to make the **smallest possible fix**
-- After all retries exhausted, a **best-effort** result is returned if any code produced valid output
+- **Max attempts:** 3 (initial generation + 2 repairs)
+- On each failure, the error is classified into a 20-category taxonomy (syntax, imports, sandbox restrictions, fillet/chamfer, booleans, build order, selectors, fonts, timeouts, memory, ...) and a targeted repair hint is generated
+- The LLM receives the error + hint + the failed code and is asked to make the **smallest possible fix**; repair attempts auto-load the error-recovery reference
+- Vision/geometry verdicts pass through to the LLM as-is instead of being re-classified
+- After all attempts are exhausted, a **best-effort** result is returned if any code produced valid output
 
 ### Parameter Updates (post-generation)
 
@@ -473,7 +486,7 @@ On session load, `GET /api/models/session/:sessionId/latest`:
 
 Root hashes are shown in the chat below the dimensional views, with:
 - Loading spinner ("Root hashes loading...") while the upload is in progress
-- After completion: 5 rows (Code/STL/STEP/GLB/Dim Views) with truncated hashes and copy-to-clipboard buttons
+- After completion: 5 rows (Code/STL/STEP/GLB/Dim Views) with truncated `start······end` hashes and explorer / download / copy actions
 
 ---
 
@@ -597,12 +610,11 @@ CAD_SERVER_URL=http://localhost:5000
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_KEY=your_service_role_key
 
-# LLM Providers
+# LLM Providers (0G router URL + model names are configured in src/config.ts)
 FIREWORKS_API_KEY=your_fireworks_key
 MIMO_API_KEY=your_mimo_key
 OG_API_KEY=your_0g_router_key
-OG_BASE_URL=https://router-api-testnet.integratenetwork.work/v1
-OG_MODEL=qwen/qwen2.5-omni-7b
+GROQ_API_KEY=your_groq_key
 
 # 0G Storage
 OG_PRIVATE_KEY=your_0g_wallet_private_key
