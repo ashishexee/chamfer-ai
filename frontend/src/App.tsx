@@ -5,7 +5,6 @@ import { ChatPanel } from "@/components/chat/ChatPanel";
 import { InspectPanel } from "@/components/cad/InspectPanel";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { LampContainer } from "@/components/ui/lamp";
-import { GlowCard } from "@/components/ui/spotlight-card";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -19,6 +18,14 @@ import { useModelStorage } from "@/hooks/useModelStorage";
 import { useChatSessions } from "@/hooks/useChatSessions";
 import { useGeneration } from "@/hooks/useGeneration";
 import { usePanelLayout } from "@/hooks/usePanelLayout";
+
+// Landing-page example prompts — one click fills the composer
+const SUGGESTIONS = [
+  "Design a mounting bracket",
+  "Create a spur gear",
+  "Model a flanged bushing",
+  "Make an enclosure lid",
+];
 
 export default function App() {
   // ── Central state store ──
@@ -85,35 +92,42 @@ export default function App() {
               /* ── Landing page ── */
               <LampContainer className="flex-1 min-h-0">
                 <div className="flex flex-col items-center justify-center flex-1 w-full min-h-0 px-4">
-                  <h1 className="mb-5 text-center text-2xl font-semibold text-adam-text-primary md:text-3xl px-4 select-none">
+                  <h1 className="mb-6 text-center text-2xl font-semibold text-adam-text-primary md:text-3xl px-4 select-none">
                     What Chamfer AI can do for you
                   </h1>
-                  <GlowCard
-                    glowColor="blue"
-                    customSize
-                    className="w-full max-w-2xl"
-                  >
-                    <div className="space-y-4">
-                      <ChatInput
-                        prompt={store.prompt}
-                        setPrompt={store.setPrompt}
-                        onSubmit={() => handleGenerate()}
-                        isGenerating={store.isGenerating}
-                        isFocused={store.isFocused}
-                        setIsFocused={store.setIsFocused}
-                        provider={store.provider}
-                        setProvider={store.setProvider}
-                        placeholder="Start building with Chamfer AI..."
-                        reasoningEnabled={store.reasoningEnabled}
-                        setReasoningEnabled={store.setReasoningEnabled}
-                        showAnimatedPlaceholder
-                        images={store.images}
-                        onImagesChange={store.setImages}
-                        providerSupportsVision={store.providerSupportsVision}
-                        isConnected={store.auth.isConnected}
-                      />
-                    </div>
-                  </GlowCard>
+                  <div className="w-full max-w-3xl">
+                    <ChatInput
+                      hero
+                      prompt={store.prompt}
+                      setPrompt={store.setPrompt}
+                      onSubmit={() => handleGenerate()}
+                      isGenerating={store.isGenerating}
+                      isFocused={store.isFocused}
+                      setIsFocused={store.setIsFocused}
+                      provider={store.provider}
+                      setProvider={store.setProvider}
+                      placeholder="Start building with Chamfer AI..."
+                      reasoningEnabled={store.reasoningEnabled}
+                      setReasoningEnabled={store.setReasoningEnabled}
+                      showAnimatedPlaceholder
+                      images={store.images}
+                      onImagesChange={store.setImages}
+                      providerSupportsVision={store.providerSupportsVision}
+                      isConnected={store.auth.isConnected}
+                    />
+                  </div>
+                  <div className="mt-5 flex flex-wrap items-center justify-center gap-2 px-4">
+                    {SUGGESTIONS.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => store.setPrompt(s)}
+                        className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3.5 py-1.5 text-[12px] text-adam-text-secondary transition-colors duration-150 hover:bg-white/[0.06] hover:text-white"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="flex items-center px-5 py-7 md:py-9">
                   <span className="text-sm md:text-base text-neutral-400 font-medium">
@@ -143,7 +157,7 @@ export default function App() {
                   panelRef={chatPanelRef}
                   collapsible
                   collapsedSize={0}
-                  minSize={20}
+                  minSize={27}
                   maxSize={400}
                   defaultSize={30}
                   onResize={(size) => {
@@ -200,7 +214,6 @@ export default function App() {
                     stlUrl={store.stlUrl}
                     paramUpdateKey={store.paramUpdateKey}
                     isParamUpdating={store.isParamUpdating}
-                    provider={store.provider}
                     isCollapsed={collapsed.preview}
                   />
                 </ResizablePanel>

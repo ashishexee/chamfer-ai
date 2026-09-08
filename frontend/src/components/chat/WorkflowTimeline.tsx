@@ -53,6 +53,7 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
     .map(s => `${s.label}: ${s.detail}`)
     .join('\n\n');
   const hasRealReasoning = reasoning && reasoning.trim().length > 0;
+  const isWorking = displaySteps.some(s => s.status === 'running');
 
   return (
     <div className="rounded-xl border border-adam-neutral-700/30 bg-[#161616]/60 overflow-hidden">
@@ -114,21 +115,40 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
                   onClick={() => setExpanded(prev => ({ ...prev, [step.id]: !prev[step.id] }))}
                   className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-white/[0.025] transition-colors group/step"
                 >
-                  {/* Icon badge */}
-                  <div className={cn(
-                    'relative shrink-0 w-5 h-5 rounded-md flex items-center justify-center transition-all',
-                    isDone
-                      ? 'bg-emerald-500/12 text-emerald-400 ring-1 ring-emerald-500/10'
-                      : isError
-                      ? 'bg-red-500/12 text-red-400 ring-1 ring-red-500/10'
-                      : isRunning
-                      ? 'bg-adam-blue/15 text-adam-blue ring-1 ring-adam-blue/15'
-                      : 'bg-adam-neutral-800/60 text-adam-text-tertiary'
-                  )}>
+                  {/* Icon badge — ring spinner while running, solid badge when settled */}
+                  <div className="relative flex h-5 w-5 shrink-0 items-center justify-center">
+                    {isRunning && (
+                      <svg
+                        viewBox="0 0 20 20"
+                        className="absolute inset-0 h-full w-full"
+                        style={{ animation: 'spin 1.1s linear infinite' }}
+                      >
+                        <circle cx="10" cy="10" r="8.5" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
+                        <circle
+                          cx="10" cy="10" r="8.5" fill="none"
+                          stroke="#00A6FF" strokeWidth="2" strokeLinecap="round"
+                          strokeDasharray="15 38.4"
+                        />
+                      </svg>
+                    )}
                     {isDone ? (
-                      <Check className="h-3 w-3" strokeWidth={3} />
+                      <span
+                        className="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-emerald-400/90 text-adam-neutral-950"
+                        style={{ animation: 'pop-in 300ms cubic-bezier(0.23,1,0.32,1) both' }}
+                      >
+                        <Check className="h-2.5 w-2.5" strokeWidth={3.5} />
+                      </span>
+                    ) : isError ? (
+                      <span
+                        className="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-red-400/90 text-adam-neutral-950"
+                        style={{ animation: 'pop-in 300ms cubic-bezier(0.23,1,0.32,1) both' }}
+                      >
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round">
+                          <path d="M18 6L6 18M6 6l12 12" />
+                        </svg>
+                      </span>
                     ) : (
-                      <Icon className="h-3 w-3" />
+                      <Icon className={cn('h-3 w-3', isRunning ? 'text-adam-blue' : 'text-adam-text-tertiary')} />
                     )}
                   </div>
 
@@ -200,7 +220,19 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
             className="w-full flex items-center gap-1.5 font-title font-bold text-adam-text-secondary hover:text-adam-text-primary transition-colors uppercase tracking-wider"
           >
             <Brain className="h-3 w-3" />
-            <span className="flex-1 text-left">{hasRealReasoning ? 'Model reasoning' : 'Thinking summary'}</span>
+            <span
+              className="flex-1 text-left"
+              style={isWorking ? {
+                backgroundImage: 'linear-gradient(90deg, #676767 35%, #E5E5E5 50%, #676767 65%)',
+                backgroundSize: '200% 100%',
+                WebkitBackgroundClip: 'text',
+                backgroundClip: 'text',
+                color: 'transparent',
+                animation: 'shimmer-text 1.4s linear infinite',
+              } : undefined}
+            >
+              {hasRealReasoning ? 'Model reasoning' : 'Thinking summary'}
+            </span>
             <ChevronDown className={cn(
               'h-3 w-3 transition-transform duration-200',
               reasoningOpen ? 'rotate-180' : ''

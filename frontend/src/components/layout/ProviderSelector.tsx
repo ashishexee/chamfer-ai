@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { API_URL } from '@/lib/constants';
 import { cn } from '@/lib/utils';
-import { Eye, ChevronDown, Shield, Cloud } from 'lucide-react';
+import { Eye, ChevronDown, Shield, Check } from 'lucide-react';
 
 interface ProviderInfo {
   id: string;
@@ -20,55 +20,99 @@ interface ProviderSelectorProps {
   requireVision?: boolean;
 }
 
-function getProviderDescription(providerId: string, providerName: string): string {
-  const id = providerId.toLowerCase();
-  const name = providerName.toLowerCase();
-  if (id.includes('gemini') || name.includes('gemini') || id.includes('google')) {
-    return 'Latest Google model with excellent multi-modal capabilities';
-  }
-  if (id.includes('claude') || name.includes('claude') || id.includes('anthropic')) {
-    return 'Most powerful Anthropic model for complex reasoning';
-  }
-  if (id.includes('gpt') || name.includes('gpt') || id.includes('openai')) {
-    return 'Latest OpenAI model for reliable CAD generation';
-  }
-  if (id.includes('glm') || name.includes('glm')) {
-    return 'Z.AI model with strong agentic coding and reasoning';
-  }
-  if (id === '0g') {
-    return 'TEE-verified model running in a decentralized trusted execution environment';
-  }
-  if (id.includes('0g-deepseek') || (id.includes('0g') && id.includes('deepseek'))) {
-    return 'DeepSeek V4 running in 0G TEE — fast reasoning with verifiable compute';
-  }
-  if (id.includes('mimo')) {
-    return 'MiMo core model with high-context reasoning';
-  }
-  if (id.includes('deepseek') && !id.includes('0g')) {
-    return 'Most powerful reasoning model for complex CAD operations';
-  }
-  if (id.includes('qwen')) {
-    return 'Qwen model with excellent multi-lingual and vision capabilities';
-  }
-  if (id.includes('groq') || id.includes('llama')) {
-    return 'Groq Llama model optimized for ultra-fast generation';
-  }
-  return 'Advanced AI model optimized for CAD generation';
+function formatContext(tokens?: number): string {
+  if (!tokens) return '';
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 ? 1 : 0)}M ctx`;
+  if (tokens >= 1000) return `${Math.round(tokens / 1000)}K ctx`;
+  return `${tokens} ctx`;
+}
+
+/** One concise row: name · context · vision · tee · selected check. */
+function ProviderRow({
+  name,
+  supportsVision,
+  isZeroG,
+  maxContextTokens,
+  selected,
+  onSelect,
+}: {
+  name: string;
+  supportsVision: boolean;
+  isZeroG?: boolean;
+  maxContextTokens?: number;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={cn(
+        'relative z-10 flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors duration-100 hover:bg-white/[0.04]',
+        selected && 'bg-white/[0.06]',
+      )}
+    >
+      <span className={cn('min-w-0 flex-1 truncate text-[13px]', selected ? 'font-medium text-white' : 'text-adam-text-secondary')}>
+        {name}
+      </span>
+      {maxContextTokens && (
+        <span className="shrink-0 text-[11px] tabular-nums text-adam-text-secondary">
+          {formatContext(maxContextTokens)}
+        </span>
+      )}
+      {supportsVision && (
+        <span className="shrink-0 text-adam-text-tertiary" title="Supports vision input">
+          <Eye className="h-3.5 w-3.5" />
+        </span>
+      )}
+      {isZeroG && (
+        <span className="shrink-0 text-emerald-400/70" title="TEE-verified on 0G">
+          <Shield className="h-3 w-3" />
+        </span>
+      )}
+      {selected && (
+        <span className="shrink-0 text-adam-blue">
+          <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+        </span>
+      )}
+    </button>
+  );
+}
+
+function GroupHeader({ label, tee }: { label: string; tee?: boolean }) {
+  return (
+    <div className="flex items-center gap-1.5 px-2 pb-1 pt-1.5">
+      {tee && <Shield className="h-2.5 w-2.5 text-emerald-400/60" />}
+      <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-adam-text-tertiary">
+        {label}
+      </span>
+    </div>
+  );
 }
 
 export function ProviderSelector({ selected, onSelect, requireVision = false }: ProviderSelectorProps) {
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left?: number; right?: number }>({ top: 0 });
 
+  // Play the exit animation, then unmount
+  const close = () => {
+    if (closing) return;
+    setClosing(true);
+    window.setTimeout(() => {
+      setClosing(false);
+      setOpen(false);
+    }, 130);
+  };
+
   // Keep a ref to the latest selected value so async callbacks never read a stale closure.
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
 
-  // ── Fetch providers once on mount, re-fetch when vision requirement changes ──
+  // ── Fetch providers once on mount ──
   useEffect(() => {
     fetch(`${API_URL}/api/providers`)
       .then(r => r.json())
@@ -114,7 +158,7 @@ export function ProviderSelector({ selected, onSelect, requireVision = false }: 
     if (!open) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
+        close();
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -124,7 +168,7 @@ export function ProviderSelector({ selected, onSelect, requireVision = false }: 
   useEffect(() => {
     if (open && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
-      const dropdownWidth = 290;
+      const dropdownWidth = 260;
       const spaceRight = window.innerWidth - rect.right;
       const spaceLeft = rect.left;
       const pos: { top: number; left?: number; right?: number } = { top: rect.top - 8 };
@@ -145,11 +189,14 @@ export function ProviderSelector({ selected, onSelect, requireVision = false }: 
     );
   }
 
+  const teeProviders = visibleProviders.filter(p => p.isZeroG);
+  const centralProviders = visibleProviders.filter(p => !p.isZeroG);
+
   return (
     <div ref={containerRef} className="relative">
       <button
         ref={buttonRef}
-        onClick={() => setOpen(!open)}
+        onClick={() => (open ? close() : setOpen(true))}
         className={cn(
           'h-8 flex items-center gap-1.5 bg-transparent text-xs transition-all font-normal shrink-0 outline-none',
           open
@@ -164,10 +211,9 @@ export function ProviderSelector({ selected, onSelect, requireVision = false }: 
         )} />
       </button>
 
-      {open && createPortal(
+      {(open || closing) && createPortal(
         <div
-          className="fixed w-[290px] max-h-[320px] overflow-y-auto rounded-2xl border border-[#2d2e2f]/90 bg-[#1e1e1f] p-1.5 shadow-2xl z-[9999] chat-scroll"
-          onMouseDown={e => e.stopPropagation()}
+          className="fixed z-[9999]"
           style={{
             top: dropdownPos.top + 'px',
             transform: 'translateY(-100%)',
@@ -175,105 +221,60 @@ export function ProviderSelector({ selected, onSelect, requireVision = false }: 
             ...(dropdownPos.right !== undefined ? { right: dropdownPos.right + 'px' } : {}),
           }}
         >
-          {/* Decentralized TEE Verified Models */}
-          {visibleProviders.filter(p => p.isZeroG).length > 0 && (
+          <div
+            className={cn(
+              'w-[260px] max-h-[320px] overflow-y-auto rounded-xl border border-white/[0.06] bg-[#1E1F20] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.55)] chat-scroll',
+              closing ? 'animate-menu-out' : 'animate-menu-in',
+            )}
+            style={{ transformOrigin: 'bottom left' }}
+            onMouseDown={e => e.stopPropagation()}
+          >
+          {teeProviders.length > 0 && (
             <>
-              <div className="flex items-center gap-1.5 px-3 pt-2 pb-1.5">
-                <Shield className="w-3 h-3 text-emerald-400/80" />
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400/80">
-                  Decentralized TEE Verified
-                </span>
-              </div>
-              {visibleProviders.filter(p => p.isZeroG).map(p => (
-                <button
+              <GroupHeader label="Decentralized TEE" tee />
+              {teeProviders.map(p => (
+                <ProviderRow
                   key={p.id}
-                  onClick={() => {
+                  name={p.name}
+                  supportsVision={p.supportsVision}
+                  isZeroG
+                  maxContextTokens={p.maxContextTokens}
+                  selected={selected === p.id}
+                  onSelect={() => {
                     onSelect(p.id);
-                    setOpen(false);
+                    close();
                   }}
-                  className={cn(
-                    'flex flex-col w-full items-start rounded-xl px-4 py-3 text-left transition-colors duration-150 outline-none',
-                    selected === p.id
-                      ? 'bg-emerald-500/10 border border-emerald-500/20'
-                      : 'hover:bg-[#2c2d2e]/80'
-                  )}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-[13px] text-white font-semibold">{p.name}</span>
-                    <div className="flex items-center gap-1.5">
-                      {p.supportsVision && (
-                        <span className="flex items-center gap-0.5 text-[10px] text-blue-400/80 font-medium">
-                          <Eye className="w-3 h-3" /> Vision
-                        </span>
-                      )}
-                      <span className="flex items-center gap-0.5 text-[10px] text-emerald-400/60 font-medium">
-                        <Shield className="w-2.5 h-2.5" /> TEE
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-[11.5px] text-[#9ca3af] mt-0.5 leading-relaxed font-normal">
-                    {getProviderDescription(p.id, p.name)}
-                  </p>
-                  {p.maxContextTokens && (
-                    <div className="text-[9px] text-[#9ca3af]/40 mt-1 font-mono">
-                      {p.maxContextTokens >= 1000 ? `${(p.maxContextTokens/1000).toFixed(0)}K` : p.maxContextTokens} ctx
-                    </div>
-                  )}
-                </button>
+                />
               ))}
-              <div className="h-px bg-[#2d2e2f] mx-3 my-1.5" />
             </>
           )}
 
-          {/* Centralized AI Providers */}
-          {visibleProviders.filter(p => !p.isZeroG).length > 0 && (
+          {teeProviders.length > 0 && centralProviders.length > 0 && (
+            <div className="mx-2 my-1 h-px bg-white/[0.05]" />
+          )}
+
+          {centralProviders.length > 0 && (
             <>
-              <div className="flex items-center gap-1.5 px-3 pt-1 pb-1.5">
-                <Cloud className="w-3 h-3 text-[#9ca3af]/60" />
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#9ca3af]/60">
-                  Centralized AI Providers
-                </span>
-              </div>
-              {visibleProviders.filter(p => !p.isZeroG).map(p => (
-                <button
+              <GroupHeader label="Centralized Providers" />
+              {centralProviders.map(p => (
+                <ProviderRow
                   key={p.id}
-                  onClick={() => {
+                  name={p.name}
+                  supportsVision={p.supportsVision}
+                  maxContextTokens={p.maxContextTokens}
+                  selected={selected === p.id}
+                  onSelect={() => {
                     onSelect(p.id);
-                    setOpen(false);
+                    close();
                   }}
-                  className={cn(
-                    'flex flex-col w-full items-start rounded-xl px-4 py-3 text-left transition-colors duration-150 outline-none',
-                    selected === p.id
-                      ? 'bg-[#292a2b]'
-                      : 'hover:bg-[#2c2d2e]/80'
-                  )}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-[13px] text-white font-semibold">{p.name}</span>
-                    <div className="flex items-center gap-1">
-                      {p.supportsVision && (
-                        <span className="flex items-center gap-0.5 text-[10px] text-blue-400/80 font-medium">
-                          <Eye className="w-3 h-3" /> Vision
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <p className="text-[11.5px] text-[#9ca3af] mt-0.5 leading-relaxed font-normal">
-                    {getProviderDescription(p.id, p.name)}
-                  </p>
-                  {p.maxContextTokens && (
-                    <div className="text-[9px] text-[#9ca3af]/40 mt-1 font-mono">
-                      {p.maxContextTokens >= 1000 ? `${(p.maxContextTokens/1000).toFixed(0)}K` : p.maxContextTokens} ctx
-                    </div>
-                  )}
-                </button>
+                />
               ))}
             </>
           )}
+          </div>
         </div>,
         document.body
       )}
     </div>
   );
 }
-
