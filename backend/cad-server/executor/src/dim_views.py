@@ -20,19 +20,20 @@ from matplotlib.collections import PolyCollection
 
 # ── Projection definitions ──
 # Each projection maps (x, y, z) -> (u, v) 2D coords and labels the axes.
-# "top":   look down -Z  ->  u=x, v=y    (width=x, depth=y)
-# "front": look along +Y ->  u=x, v=z    (width=x, height=z)
-# "side":  look along +X ->  u=y, v=z    (depth=y, height=z)
+# These match the 3D viewer's camera convention (three.js, Y-up):
+#   viewer TOP   camera looks down  -Y -> sees the XZ plane
+#   viewer FRONT camera looks along -Z -> sees the XY plane
+#   viewer RIGHT camera looks along -X -> sees the YZ plane
 PROJECTIONS = {
     "top": {
-        "axes": ("X", "Y"),
+        "axes": ("X", "Z"),
         "title": "Top View",
-        "drop": 2,  # drop z
+        "drop": 1,  # drop y
     },
     "front": {
-        "axes": ("X", "Z"),
+        "axes": ("X", "Y"),
         "title": "Front View",
-        "drop": 1,  # drop y
+        "drop": 2,  # drop z
     },
     "side": {
         "axes": ("Y", "Z"),

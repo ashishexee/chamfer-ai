@@ -1,6 +1,5 @@
 import { Download, Loader2 } from 'lucide-react';
 import { useState } from 'react';
-import { GlowCard } from '@/components/ui/spotlight-card';
 import { API_URL } from '@/lib/constants';
 
 interface ExportSectionProps {
@@ -13,9 +12,9 @@ interface ExportSectionProps {
 }
 
 export function ExportSection({ stlBase64, stepBase64, exportFilename, setExportFilename, rootHashStl, rootHashStep }: ExportSectionProps) {
-  if (!stlBase64 && !stepBase64) return null;
-
   const [downloading, setDownloading] = useState<string | null>(null);
+
+  if (!stlBase64 && !stepBase64) return null;
 
   const downloadFrom0G = async (rootHash: string, ext: string) => {
     setDownloading(ext);
@@ -59,40 +58,40 @@ export function ExportSection({ stlBase64, stepBase64, exportFilename, setExport
     }
   };
 
+  const formats = [stlBase64 ? 'stl' : null, stepBase64 ? 'step' : null].filter(Boolean) as ('stl' | 'step')[];
+
   return (
     <div className="px-4 pb-4">
-      <GlowCard glowColor="blue" customSize className="w-full">
-        <div className="mb-3">
-          <label className="text-[10px] text-adam-text-tertiary mb-1 block">Filename</label>
+      <div className="overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02]">
+        <div className="px-3.5 py-2.5">
+          <label className="mb-1 block text-[10px] uppercase tracking-wider text-adam-text-tertiary">
+            Filename
+          </label>
           <input
             type="text"
             value={exportFilename}
             onChange={e => setExportFilename(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
-            className="w-full bg-adam-bg-dark border border-adam-neutral-700 rounded-xl px-3 py-1.5 text-xs text-adam-text-primary outline-none focus:border-adam-blue transition-colors"
+            className="w-full border-b border-white/[0.08] bg-transparent px-0.5 py-1 font-mono text-[12px] text-adam-text-primary outline-none transition-colors placeholder:text-adam-text-tertiary/60 hover:border-white/[0.15] focus:border-adam-blue/60"
             placeholder="model"
           />
         </div>
-        <div className="flex gap-2">
-          {stlBase64 && (
+        <div className="flex gap-2 border-t border-white/[0.04] px-3.5 py-2.5">
+          {formats.map(ext => (
             <button
-              onClick={() => handleDownload('stl')}
-              disabled={downloading === 'stl'}
-              className="flex items-center gap-1.5 rounded-lg border border-adam-neutral-700 bg-adam-bg-dark px-3 py-2 text-xs text-adam-text-secondary hover:bg-adam-neutral-800 hover:text-adam-text-primary transition-colors flex-1 justify-center disabled:opacity-50"
+              key={ext}
+              onClick={() => handleDownload(ext)}
+              disabled={downloading === ext}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-1.5 text-[11.5px] font-medium uppercase tracking-wide text-adam-text-secondary transition-colors hover:bg-white/[0.06] hover:text-white disabled:opacity-50"
             >
-              {downloading === 'stl' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} STL
+              {downloading === ext ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              {ext}
             </button>
-          )}
-          {stepBase64 && (
-            <button
-              onClick={() => handleDownload('step')}
-              disabled={downloading === 'step'}
-              className="flex items-center gap-1.5 rounded-lg border border-adam-neutral-700 bg-adam-bg-dark px-3 py-2 text-xs text-adam-text-secondary hover:bg-adam-neutral-800 hover:text-adam-text-primary transition-colors flex-1 justify-center disabled:opacity-50"
-            >
-              {downloading === 'step' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} STEP
-            </button>
-          )}
+          ))}
         </div>
-      </GlowCard>
+        <div className="border-t border-white/[0.04] px-3.5 py-1.5 text-[10px] text-adam-text-tertiary/70">
+          Pulls from 0G Storage when available
+        </div>
+      </div>
     </div>
   );
 }

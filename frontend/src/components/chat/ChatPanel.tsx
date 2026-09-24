@@ -125,6 +125,7 @@ export function ChatPanel({
                   progress={
                     i === messages.length - 1 ? uploadProgress : undefined
                   }
+                  defaultExpanded={i === messages.length - 1}
                 />
               )}
             </Fragment>

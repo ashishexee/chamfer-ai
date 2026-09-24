@@ -1,8 +1,14 @@
-import { CheckCircle, AlertTriangle, XCircle, Ruler, Eye, EyeOff } from 'lucide-react';
+import { CheckCircle, AlertTriangle, XCircle, Eye, EyeOff } from 'lucide-react';
 import type { InspectionData } from '@/types';
 
 interface InspectionPanelProps {
   inspection: InspectionData;
+}
+
+function formatVolume(v: number): string {
+  if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
+  return v.toFixed(1);
 }
 
 export function InspectionPanel({ inspection }: InspectionPanelProps) {
@@ -10,35 +16,47 @@ export function InspectionPanel({ inspection }: InspectionPanelProps) {
   const hasWarnings = inspection.warnings && inspection.warnings.length > 0;
   const allClear = inspection.all_clear || (!hasErrors && !hasWarnings);
 
-  // Vision inspection status
-  const visionChecking = (inspection as any).visionChecking;
-  const visionVerified = (inspection as any).visionVerified;
-  const visionFeedback = (inspection as any).visionFeedback;
+  const visionChecking = inspection.visionChecking;
+  const visionVerified = inspection.visionVerified;
+  const visionFeedback = inspection.visionFeedback;
   const hasVision = visionVerified !== undefined || visionChecking;
 
-  const statusIcon = hasErrors
-    ? <XCircle className="h-3.5 w-3.5 text-red-400" />
-    : hasWarnings
-    ? <AlertTriangle className="h-3.5 w-3.5 text-yellow-400" />
-    : <CheckCircle className="h-3.5 w-3.5 text-green-400" />;
-
-  const statusText = hasErrors
-    ? 'Issues Found'
-    : hasWarnings
-    ? 'Warnings'
-    : 'All Checks Passed';
+  const stats = [
+    {
+      label: 'Dimensions',
+      value: inspection.bounding_box?.size
+        ? `${inspection.bounding_box.size.map((s) => s.toFixed(0)).join('×')}mm`
+        : '—',
+    },
+    { label: 'Volume', value: `${formatVolume(inspection.volume || 0)}mm³` },
+    { label: 'Faces', value: String(inspection.face_count || 0) },
+    { label: 'Edges', value: String(inspection.edge_count || 0) },
+    { label: 'Shape', value: inspection.shape_type || 'unknown' },
+    {
+      label: 'Valid',
+      value: inspection.is_valid ? 'Yes' : 'No',
+      valueClass: inspection.is_valid ? 'text-emerald-400' : 'text-red-400',
+    },
+  ];
 
   return (
     <div className="p-4 flex flex-col gap-3">
-      {/* Geometry Stats */}
+      {/* Geometry spec grid — borderless, hairline-divided */}
       {inspection.bounding_box?.size && (
-        <div className="grid grid-cols-2 gap-2">
-          <Stat label="Dimensions" value={`${inspection.bounding_box.size.map(s => s.toFixed(0)).join('x')}mm`} />
-          <Stat label="Volume" value={`${(inspection.volume || 0).toFixed(1)}mm³`} />
-          <Stat label="Faces" value={String(inspection.face_count || 0)} />
-          <Stat label="Edges" value={String(inspection.edge_count || 0)} />
-          <Stat label="Shape" value={inspection.shape_type || 'unknown'} />
-          <Stat label="Valid" value={inspection.is_valid ? 'Yes' : 'No'} valueClass={inspection.is_valid ? 'text-green-400' : 'text-red-400'} />
+        <div className="grid grid-cols-3 overflow-hidden">
+          {stats.map((s, i) => (
+            <div
+              key={s.label}
+              className={`py-1.5 ${i % 3 !== 0 ? 'border-l border-white/[0.05] pl-3' : ''} ${
+                i >= 3 ? 'border-t border-white/[0.05] pb-1.5 pt-2.5' : 'pb-2.5'
+              }`}
+            >
+              <div className="text-[9px] uppercase tracking-wider text-adam-text-tertiary">{s.label}</div>
+              <div className={`truncate font-mono text-[12px] text-adam-text-primary ${s.valueClass || ''}`}>
+                {s.value}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -46,8 +64,8 @@ export function InspectionPanel({ inspection }: InspectionPanelProps) {
       {hasErrors && (
         <div className="space-y-1">
           {inspection.errors!.map((err, i) => (
-            <div key={i} className="text-[10px] text-red-400 bg-red-500/10 rounded-md px-2 py-1.5 flex items-start gap-1.5">
-              <XCircle className="h-3 w-3 mt-0.5 shrink-0" />
+            <div key={i} className="flex items-start gap-1.5 rounded-md bg-red-400/[0.07] px-2.5 py-1.5 text-[10px] text-red-400/95 ring-1 ring-red-400/10">
+              <XCircle className="mt-0.5 h-3 w-3 shrink-0" />
               <span>{err}</span>
             </div>
           ))}
@@ -58,8 +76,8 @@ export function InspectionPanel({ inspection }: InspectionPanelProps) {
       {hasWarnings && (
         <div className="space-y-1">
           {inspection.warnings!.map((warn, i) => (
-            <div key={i} className="text-[10px] text-yellow-400 bg-yellow-500/10 rounded-md px-2 py-1.5 flex items-start gap-1.5">
-              <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+            <div key={i} className="flex items-start gap-1.5 rounded-md bg-yellow-400/[0.07] px-2.5 py-1.5 text-[10px] text-yellow-400/95 ring-1 ring-yellow-400/10">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
               <span>{warn}</span>
             </div>
           ))}
@@ -68,7 +86,7 @@ export function InspectionPanel({ inspection }: InspectionPanelProps) {
 
       {/* All clear */}
       {allClear && inspection.bounding_box?.size && !hasVision && (
-        <div className="text-[10px] text-green-400 bg-green-500/10 rounded-md px-2 py-1.5 flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 rounded-md bg-emerald-400/[0.06] px-2.5 py-1.5 text-[10px] text-emerald-400/90 ring-1 ring-emerald-400/10">
           <CheckCircle className="h-3 w-3" />
           <span>Valid watertight solid — all geometry checks passed</span>
         </div>
@@ -78,34 +96,25 @@ export function InspectionPanel({ inspection }: InspectionPanelProps) {
       {hasVision && (
         <div className="space-y-1.5">
           {visionChecking && (
-            <div className="text-[10px] text-adam-blue bg-adam-blue/10 rounded-md px-2 py-1.5 flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 rounded-md bg-adam-blue/[0.07] px-2.5 py-1.5 text-[10px] text-adam-blue ring-1 ring-adam-blue/10">
               <Eye className="h-3 w-3 animate-pulse" />
               <span>Visually inspecting rendered model...</span>
             </div>
           )}
           {visionVerified && !visionChecking && (
-            <div className="text-[10px] text-green-400 bg-green-500/10 rounded-md px-2 py-1.5 flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 rounded-md bg-emerald-400/[0.06] px-2.5 py-1.5 text-[10px] text-emerald-400/90 ring-1 ring-emerald-400/10">
               <Eye className="h-3 w-3" />
               <span>Vision-verified — model matches request</span>
             </div>
           )}
           {visionVerified === false && !visionChecking && (
-            <div className="text-[10px] text-yellow-400 bg-yellow-500/10 rounded-md px-2 py-1.5 flex items-start gap-1.5">
-              <EyeOff className="h-3 w-3 mt-0.5 shrink-0" />
+            <div className="flex items-start gap-1.5 rounded-md bg-yellow-400/[0.07] px-2.5 py-1.5 text-[10px] text-yellow-400/95 ring-1 ring-yellow-400/10">
+              <EyeOff className="mt-0.5 h-3 w-3 shrink-0" />
               <span>{visionFeedback || 'Vision check found issues — self-correcting...'}</span>
             </div>
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
-  return (
-    <div className="bg-white/[0.02] border border-white/[0.04] rounded-lg px-2.5 py-1.5">
-      <div className="text-[9px] text-adam-text-tertiary uppercase tracking-wider">{label}</div>
-      <div className={`text-xs text-adam-text-primary font-medium ${valueClass || ''}`}>{value}</div>
     </div>
   );
 }

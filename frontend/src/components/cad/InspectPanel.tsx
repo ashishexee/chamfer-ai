@@ -1,5 +1,6 @@
 import { ChevronRight, Save } from "lucide-react";
 import { CheckCircle, AlertTriangle, XCircle } from "lucide-react";
+import type { ReactNode } from "react";
 import type { AppStore } from "@/hooks/useAppStore";
 import { PARAM_PHASES } from "@/lib/constants";
 import { ParameterPanel } from "@/components/cad/ParameterPanel";
@@ -12,6 +13,43 @@ import { ProgressiveFluxLoader } from "@/components/ui/progressive-flux-loader";
 interface InspectPanelProps {
   store: AppStore;
   onStoreIteration: () => void;
+}
+
+function SectionHeader({
+  label,
+  expanded,
+  onToggle,
+  count,
+  right,
+  className = "",
+}: {
+  label: ReactNode;
+  expanded: boolean;
+  onToggle: () => void;
+  count?: ReactNode;
+  right?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      onClick={onToggle}
+      className={`flex cursor-pointer select-none items-center justify-between px-4 py-2.5 transition-colors hover:bg-white/[0.02] ${className}`}
+    >
+      <div className="flex items-center gap-1.5">
+        <ChevronRight
+          className={`h-3.5 w-3.5 text-adam-text-tertiary/70 transition-transform duration-200 ${
+            expanded ? "rotate-90" : ""
+          }`}
+        />
+        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-adam-text-tertiary">
+          {label}
+        </span>
+      </div>
+      {right ?? (count != null && (
+        <span className="font-mono text-[10px] tabular-nums text-adam-text-tertiary/60">{count}</span>
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -57,40 +95,39 @@ export function InspectPanel({ store, onStoreIteration }: InspectPanelProps) {
   const hasCode = !!currentCode;
   const isEmpty = !hasParameters && !hasCode;
 
+  const storageOk = !!modelStorageStatus && /complete|stored|success/i.test(modelStorageStatus);
+
   return (
     <div className="flex h-full flex-col relative">
       {/* Inspect header */}
-      <div
-        onClick={() => setInspectExpanded(!inspectExpanded)}
-        className="flex items-center justify-between px-4 py-3 border-b border-adam-neutral-700/40 bg-gradient-to-b from-white/[0.02] to-transparent cursor-pointer hover:bg-white/[0.02] transition-colors select-none"
-      >
-        <div className="flex items-center gap-2">
-          <ChevronRight
-            className={`h-3.5 w-3.5 text-adam-text-tertiary transition-transform duration-200 ${inspectExpanded ? "rotate-90" : ""}`}
-          />
-          <span className="font-title font-bold text-adam-text-tertiary uppercase tracking-widest">
-            Inspect
-          </span>
-        </div>
-        {hasInspection && (
-          <div className="flex items-center gap-1.5">
-            {inspection!.errors && inspection!.errors.length > 0 ? (
-              <>
-                <XCircle className="h-3.5 w-3.5 text-red-400/90" />
-                <span className="font-title font-bold text-red-400/90 tracking-wide">
-                  Issues
-                </span>
-              </>
-            ) : inspection!.warnings && inspection!.warnings.length > 0 ? (
-              <>
-                <AlertTriangle className="h-3.5 w-3.5 text-yellow-400/90" />
-                <span className="font-title font-bold text-yellow-400/90 tracking-wide">
-                  Warnings
-                </span>
-              </>
-            ) : null}
-          </div>
-        )}
+      <div className="border-b border-adam-neutral-700/40 bg-gradient-to-b from-white/[0.02] to-transparent">
+        <SectionHeader
+          label="Inspect"
+          expanded={inspectExpanded}
+          onToggle={() => setInspectExpanded(!inspectExpanded)}
+          className="py-3"
+          right={
+            hasInspection && (inspection!.errors?.length || inspection!.warnings?.length) ? (
+              <span className="flex items-center gap-1.5">
+                {inspection!.errors && inspection!.errors.length > 0 ? (
+                  <>
+                    <XCircle className="h-3.5 w-3.5 text-red-400/90" />
+                    <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-red-400/90">
+                      Issues
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="h-3.5 w-3.5 text-yellow-400/90" />
+                    <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-yellow-400/90">
+                      Warnings
+                    </span>
+                  </>
+                )}
+              </span>
+            ) : undefined
+          }
+        />
       </div>
 
       <div className="chat-scroll flex-1 overflow-y-auto">
@@ -104,27 +141,16 @@ export function InspectPanel({ store, onStoreIteration }: InspectPanelProps) {
         {/* Snapshots */}
         {hasSnapshots && (
           <div className="border-b border-adam-neutral-700/40">
-            <div
-              onClick={() => setSnapshotsExpanded(!snapshotsExpanded)}
-              className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-white/[0.02] transition-colors select-none"
-            >
-              <div className="flex items-center gap-2">
-                <ChevronRight
-                  className={`h-3.5 w-3.5 text-adam-text-tertiary transition-transform duration-200 ${snapshotsExpanded ? "rotate-90" : ""}`}
-                />
-                <h3 className="font-title font-bold text-adam-text-tertiary uppercase tracking-widest">
-                  Snapshots
-                </h3>
-              </div>
-              <span className="text-[10px] text-adam-text-tertiary/60 tabular-nums">
-                {
-                  Object.keys(snapshots).filter(
-                    (k) => snapshots[k] && !snapshots[k].includes("error"),
-                  ).length
-                }{" "}
-                views
-              </span>
-            </div>
+            <SectionHeader
+              label="Snapshots"
+              expanded={snapshotsExpanded}
+              onToggle={() => setSnapshotsExpanded(!snapshotsExpanded)}
+              count={`${
+                Object.keys(snapshots).filter(
+                  (k) => snapshots[k] && !snapshots[k].includes("error"),
+                ).length
+              } views`}
+            />
             {snapshotsExpanded && <SnapshotGallery snapshots={snapshots} />}
           </div>
         )}
@@ -132,22 +158,12 @@ export function InspectPanel({ store, onStoreIteration }: InspectPanelProps) {
         {/* Parameters */}
         {hasParameters && (
           <div className="border-b border-adam-neutral-700/40">
-            <div
-              onClick={() => setParametersExpanded(!parametersExpanded)}
-              className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-white/[0.02] transition-colors select-none"
-            >
-              <div className="flex items-center gap-2">
-                <ChevronRight
-                  className={`h-3.5 w-3.5 text-adam-text-tertiary transition-transform duration-200 ${parametersExpanded ? "rotate-90" : ""}`}
-                />
-                <h3 className="font-title font-bold text-adam-text-tertiary/80 uppercase tracking-widest">
-                  Parameters
-                </h3>
-              </div>
-              <span className="text-[10px] text-adam-text-tertiary/60 tabular-nums">
-                {Object.keys(parameters).length} params
-              </span>
-            </div>
+            <SectionHeader
+              label="Parameters"
+              expanded={parametersExpanded}
+              onToggle={() => setParametersExpanded(!parametersExpanded)}
+              count={`${Object.keys(parameters).length} params`}
+            />
             {parametersExpanded && (
               <div className="px-4 pb-4">
                 <ParameterPanel
@@ -166,7 +182,7 @@ export function InspectPanel({ store, onStoreIteration }: InspectPanelProps) {
                   </div>
                 )}
                 {paramError && (
-                  <div className="mt-2 flex items-start gap-2 text-[11px] text-red-400/90 bg-red-500/[0.06] rounded-lg px-3 py-2 ring-1 ring-red-500/10">
+                  <div className="mt-2 flex items-start gap-2 text-[11px] text-red-400/90 bg-red-400/[0.06] rounded-lg px-3 py-2 ring-1 ring-red-400/10">
                     {paramError}
                   </div>
                 )}
@@ -179,7 +195,7 @@ export function InspectPanel({ store, onStoreIteration }: InspectPanelProps) {
                       !chatSessionId ||
                       latestMessageOrder === null
                     }
-                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-adam-blue/50 bg-adam-blue/10 px-3 py-2 text-xs font-medium text-adam-blue transition-colors hover:bg-adam-blue/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-adam-blue/25 bg-adam-blue/10 px-3 py-2 text-xs font-medium text-adam-blue transition-colors hover:bg-adam-blue/[0.15] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Save className="h-3.5 w-3.5" />
                     {isStoringIteration ? (
@@ -194,8 +210,15 @@ export function InspectPanel({ store, onStoreIteration }: InspectPanelProps) {
                   </button>
                 )}
                 {modelStorageStatus && (
-                  <div className="mt-2 text-[10px] text-adam-text-tertiary bg-adam-neutral-800/60 rounded-md px-2 py-1.5">
-                    {modelStorageStatus}
+                  <div
+                    className={`mt-2 flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] ring-1 ${
+                      storageOk
+                        ? "bg-emerald-400/[0.06] text-emerald-400/90 ring-emerald-400/10"
+                        : "bg-white/[0.02] text-adam-text-tertiary ring-white/[0.05]"
+                    }`}
+                  >
+                    {storageOk && <CheckCircle className="h-3 w-3 shrink-0" />}
+                    <span>{modelStorageStatus}</span>
                   </div>
                 )}
               </div>
@@ -206,23 +229,11 @@ export function InspectPanel({ store, onStoreIteration }: InspectPanelProps) {
         {/* Export */}
         {hasExport && (
           <div className="border-b border-adam-neutral-700/40">
-            <div
-              onClick={() => setExportExpanded(!exportExpanded)}
-              className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-white/[0.02] transition-colors select-none"
-            >
-              <div className="flex items-center gap-2">
-                <ChevronRight
-                  className={`h-3.5 w-3.5 text-adam-text-tertiary transition-transform duration-200 ${exportExpanded ? "rotate-90" : ""}`}
-                />
-                <h3 className="font-title font-bold text-adam-text-tertiary uppercase tracking-widest">
-                  Export{" "}
-                  <span className="text-[10px] font-sans font-normal text-pink-400/70 normal-case tracking-normal">
-                    by
-                  </span>{" "}
-                  <span className="text-pink-400 font-bold">0G</span>
-                </h3>
-              </div>
-            </div>
+            <SectionHeader
+              label="Export"
+              expanded={exportExpanded}
+              onToggle={() => setExportExpanded(!exportExpanded)}
+            />
             {exportExpanded && (
               <ExportSection
                 stlBase64={stlBase64}
@@ -239,23 +250,12 @@ export function InspectPanel({ store, onStoreIteration }: InspectPanelProps) {
         {/* Generated Code */}
         {hasCode && (
           <div className="border-b border-adam-neutral-700/40">
-            <div
-              onClick={() => setCodeExpanded(!codeExpanded)}
-              className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-white/[0.02] transition-colors select-none"
-            >
-              <div className="flex items-center gap-2">
-                <ChevronRight
-                  className={`h-3.5 w-3.5 text-adam-text-tertiary transition-transform duration-200 ${codeExpanded ? "rotate-90" : ""}`}
-                />
-                <h3 className="font-title font-bold text-adam-text-secondary uppercase tracking-widest">
-                  Generated Code{" "}
-                  <span className="text-[10px] font-sans font-normal text-pink-400/70 normal-case tracking-normal">
-                    by
-                  </span>{" "}
-                  <span className="text-pink-400 font-bold">0G</span>
-                </h3>
-              </div>
-            </div>
+            <SectionHeader
+              label="Generated Code"
+              expanded={codeExpanded}
+              onToggle={() => setCodeExpanded(!codeExpanded)}
+              count={currentCode ? `${currentCode.split("\n").length} lines` : undefined}
+            />
             {codeExpanded && <CodeSection code={currentCode} />}
           </div>
         )}

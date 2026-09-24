@@ -111,6 +111,9 @@ function ZeroGMetadataPanel({ zeroG }: { zeroG: NonNullable<Message['zeroG']> })
           <span className="font-title font-bold text-emerald-400 tracking-widest uppercase text-[11px]">
             0G TEE Compute
           </span>
+          <span className="ml-auto inline-flex items-center">
+            <TeeVerifiedInfo />
+          </span>
         </div>
       </div>
 
@@ -409,7 +412,7 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
       </div>
 
       {/* Content */}
-      <div className="px-3.5 pb-3.5">
+      <div className="px-3.5 pb-3.5 pt-3">
         {/* User images */}
         {isUser && message.images && message.images.length > 0 && (
           <div className="flex gap-2 mb-2 overflow-x-auto">
@@ -515,7 +518,6 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
               Best effort
             </span>
           )}
-          {message.zeroG && <TeeVerifiedInfo />}
         </div>
 
         {/* 0G Provider Metadata */}

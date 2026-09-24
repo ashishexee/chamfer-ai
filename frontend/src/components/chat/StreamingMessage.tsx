@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { WorkflowTimeline } from './WorkflowTimeline';
+import { PixelLoader } from './PixelLoader';
 import { NutIcon } from '@/components/hardware/NutIcon';
 import { getProviderDisplayName } from '@/lib/constants';
 import type { WorkflowStep } from '@/types';
@@ -41,22 +42,10 @@ export function StreamingMessage({ steps, reasoning, provider }: StreamingMessag
             <span className="font-title font-bold text-adam-text-primary tracking-wide">
               {provider ? getProviderDisplayName(provider) : 'Chamfer AI'}
             </span>
-            <span className="text-[10px] text-adam-blue font-medium uppercase tracking-wider">thinking</span>
           </div>
 
-          {/* Typing dots */}
-          <div className="flex gap-1">
-            {[0, 1, 2].map(i => (
-              <span
-                key={i}
-                className="w-1.5 h-1.5 bg-adam-blue rounded-full"
-                style={{
-                  animation: 'typing-dot 1.2s infinite ease-in-out',
-                  animationDelay: `${i * 150}ms`,
-                }}
-              />
-            ))}
-          </div>
+          {/* Pixel-grid loader, bare — no label or timer */}
+          <PixelLoader />
         </div>
 
         {/* Workflow timeline — skeleton shown immediately, live steps replace as they arrive */}
