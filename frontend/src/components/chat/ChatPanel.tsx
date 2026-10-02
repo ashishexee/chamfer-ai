@@ -44,8 +44,8 @@ export function ChatPanel({
     setPrompt,
     isFocused,
     setIsFocused,
-    reasoningEnabled,
-    setReasoningEnabled,
+    reasoningEffort,
+    setReasoningEffort,
     streamReasoning,
     images,
     setImages,
@@ -158,8 +158,8 @@ export function ChatPanel({
           provider={provider}
           setProvider={setProvider}
           placeholder={placeholder}
-          reasoningEnabled={reasoningEnabled}
-          setReasoningEnabled={setReasoningEnabled}
+          reasoningEffort={reasoningEffort}
+          setReasoningEffort={setReasoningEffort}
           images={images}
           onImagesChange={setImages}
           providerSupportsVision={providerSupportsVision}

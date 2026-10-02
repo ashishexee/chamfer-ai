@@ -8,6 +8,7 @@ import type {
   WorkflowStep,
   SessionListItem,
   Specification,
+  ReasoningEffort,
 } from "@/types";
 import type { RootHashData, TxSeqData } from "@/components/chat/RootHashes";
 import { API_URL, CHAT_ENDPOINTS, MODEL_ENDPOINTS } from "@/lib/constants";
@@ -40,7 +41,9 @@ export function useAppStore() {
   }, []);
   const provider = _provider;
   const [streamReasoning, setStreamReasoning] = useState("");
-  const [reasoningEnabled, setReasoningEnabled] = useState(true);
+  // null until the user picks one; ReasoningSelector snaps it to the selected
+  // model's default (its highest level) as soon as the model list is known.
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | null>(null);
   const [providerSupportsVision, setProviderSupportsVision] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
 
@@ -156,8 +159,8 @@ export function useAppStore() {
     setProvider,
     streamReasoning,
     setStreamReasoning,
-    reasoningEnabled,
-    setReasoningEnabled,
+    reasoningEffort,
+    setReasoningEffort,
     providerSupportsVision,
     setProviderSupportsVision,
     isFocused,

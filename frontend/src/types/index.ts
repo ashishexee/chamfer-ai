@@ -78,10 +78,35 @@ export interface Message {
   rootHashes?: RootHashData;
 }
 
+/** Reasoning depth accepted by a model (OpenAI-compatible `reasoning_effort`). */
+export type ReasoningEffort =
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+  | 'none'
+  | 'adaptive';
+
 export interface Provider {
   id: string;
   name: string;
   desc: string;
+}
+
+/** Provider record as returned by GET /api/providers. */
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  model: string;
+  hasKey: boolean;
+  supportsVision: boolean;
+  maxContextTokens?: number;
+  isZeroG?: boolean;
+  /** Present only when the model exposes a graded reasoning scale. */
+  reasoningEfforts?: ReasoningEffort[];
+  defaultReasoningEffort?: ReasoningEffort;
 }
 
 export interface TEEProof {

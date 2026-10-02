@@ -1,16 +1,21 @@
 import OpenAI from 'openai';
 import { spawn } from 'child_process';
-import { config, type ProviderConfig } from '../config';
+import { config, type ProviderConfig, type ReasoningEffort } from '../config';
 import { buildPromptWithRefs, validateRequestedFiles } from '../lib/loader';
 import { CLARIFIER_SYSTEM_PROMPT } from './clarifier-prompt';
 import { normalizeChatId, verifyTEEResponse, type TeeStatus, type TeeSignatureReceipt } from '../0g/tee-verifier';
 
 /**
- * Fireworks `reasoning_effort`, emitted only for providers that declare one.
- * Kept behind a helper so every call to a provider is asked for the same effort.
+ * `reasoning_effort` for a provider call. A per-request override — the level the
+ * user picked in the UI — wins when present; otherwise the provider's configured
+ * default applies. Providers declaring neither send no parameter at all.
  */
-function reasoningParams(provider: ProviderConfig): Record<string, string> {
-  return provider.reasoningEffort ? { reasoning_effort: provider.reasoningEffort } : {};
+function reasoningParams(
+  provider: ProviderConfig,
+  override?: ReasoningEffort,
+): Record<string, string> {
+  const effort = override ?? provider.reasoningEffort;
+  return effort ? { reasoning_effort: effort } : {};
 }
 
 // ─── JSON Response Extraction ────────────────────────────────────────
@@ -562,13 +567,15 @@ export interface GenerateOptions {
   /** true on repair attempts — preloads references/error-recovery.md */
   repair?: boolean;
   providerId?: string;
+  /** User-chosen reasoning depth for this request; falls back to the provider default. */
+  reasoningEffort?: ReasoningEffort;
   callbacks?: StreamCallbacks;
 }
 
 export async function generateCadQueryCodeStream(
   options: GenerateOptions,
 ): Promise<LLMResult> {
-  const { prompt, images, sessionHistory, previousCode, errorFeedback, repair, providerId, callbacks } = options;
+  const { prompt, images, sessionHistory, previousCode, errorFeedback, repair, providerId, reasoningEffort, callbacks } = options;
   const provider = config.providers[providerId || '0g'] || config.providers['0g'];
   const llm = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseUrl });
   const isZeroG = provider.isZeroG === true;
@@ -654,7 +661,7 @@ ${messageContent}`;
         model: provider.model,
         messages,
         ...(isZeroG ? { max_tokens: 32768, verify_tee: true } : {}),
-        ...reasoningParams(provider),
+        ...reasoningParams(provider, reasoningEffort),
         temperature: 0.2,
         stream: true,
       } as any);

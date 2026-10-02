@@ -107,8 +107,8 @@ export default function App() {
                       provider={store.provider}
                       setProvider={store.setProvider}
                       placeholder="Start building with Chamfer AI..."
-                      reasoningEnabled={store.reasoningEnabled}
-                      setReasoningEnabled={store.setReasoningEnabled}
+                      reasoningEffort={store.reasoningEffort}
+                      setReasoningEffort={store.setReasoningEffort}
                       showAnimatedPlaceholder
                       images={store.images}
                       onImagesChange={store.setImages}

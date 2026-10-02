@@ -188,8 +188,6 @@ export function getMaxContextTokens(providerId: string): number {
   const budgets: Record<string, number> = {
     '0g': 262144,
     '0g-deepseek': 1000000,
-    'mimo': 1000000,
-    'mimo-pro': 1000000,
     'deepseek-v4-flash': 1000000,
     'deepseek-v4-pro': 1000000,
     'minimax-m3': 1048576,

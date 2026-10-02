@@ -9,7 +9,7 @@ import {
   checkClarification,
   type ParameterSchema,
 } from '../services/llm';
-import { config } from '../config';
+import { config, type ReasoningEffort } from '../config';
 import { RETRY_TEMPLATE } from '../lib/loader';
 import { expandPrompt } from '../services/prompt-expander';
 import { checkVisionSupport } from '../services/vision';
@@ -90,7 +90,7 @@ interface CadResult {
 }
 
 export async function handleGenerate(req: Request, res: Response): Promise<void> {
-  const { prompt, history, provider, enableVision, answers, clarificationProvider, images, sessionId, editMode } = req.body as {
+  const { prompt, history, provider, enableVision, answers, clarificationProvider, images, sessionId, editMode, reasoningEffort } = req.body as {
     prompt?: string;
     history?: { role: string; content: string }[];
     provider?: string;
@@ -100,6 +100,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
     images?: string[];
     sessionId?: string;
     editMode?: boolean;
+    reasoningEffort?: string;
   };
 
   if (!prompt) { res.status(400).json({ error: 'Prompt is required' }); return; }
@@ -108,6 +109,14 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
   const providerId = provider || '0g';
   const providerConfig = config.providers[providerId] || config.providers['0g'];
   const supportsVision = providerConfig.supportsVision && enableVision === true;
+
+  // Per-request reasoning depth. Honoured only when the model advertises a
+  // graded scale and the value is one it accepts; anything else silently falls
+  // back to the provider default rather than sending a value the API rejects.
+  const reasoningOverride: ReasoningEffort | undefined =
+    reasoningEffort && providerConfig.reasoningEfforts?.includes(reasoningEffort as ReasoningEffort)
+      ? (reasoningEffort as ReasoningEffort)
+      : undefined;
 
   // Validate images if provided
   if (images && images.length > 0) {
@@ -295,6 +304,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         errorFeedback,
         repair: attempt > 0,
         providerId,
+        reasoningEffort: reasoningOverride,
         callbacks: attempt === 0 ? {
           onReasoning: (chunk) => sendSSE(res, 'reasoning', { chunk }),
           onContent: () => {},
@@ -675,6 +685,10 @@ export function handleListProviders(_req: Request, res: Response): void {
     supportsVision: p.supportsVision,
     maxContextTokens: p.maxContextTokens,
     isZeroG: p.isZeroG || false,
+    // Graded reasoning scale, when the model exposes one. Absent means the UI
+    // should render no reasoning control for this model.
+    reasoningEfforts: p.reasoningEfforts,
+    defaultReasoningEffort: p.reasoningEffort,
   }));
   res.json({ providers });
 }

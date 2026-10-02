@@ -215,14 +215,12 @@ chamferai/
 
 ### LLM Providers
 
-The server supports 13 providers via an OpenAI-compatible interface. For privacy-sensitive CAD work, **0G Compute** is the recommended provider:
+The server supports 11 providers via an OpenAI-compatible interface. For privacy-sensitive CAD work, **0G Compute** is the recommended provider. (The Fireworks-hosted models below are currently disabled in `src/config.ts` — that account is suspended.)
 
 | Provider ID | Model | Vision | Notes |
 |-------------|-------|--------|-------|
 | `0g` | 0GM-1.0-35B-A3B | Yes | **0G Compute** — decentralized GPU marketplace. No data retention. Verifiable proofs. 90% cheaper than centralized providers. |
 | `0g-deepseek` | DeepSeek V4 Flash | No | DeepSeek V4 Flash via the **0G** router — 1M context, TEE-verified |
-| `mimo` | MiMo 2.5 | Yes | Xiaomi MiMo, 310B (15B active) |
-| `mimo-pro` | MiMo 2.5 Pro | No | 1T (42B active) |
 | `deepseek-v4-flash` | DeepSeek V4 Flash | No | Fast, 1M context (Fireworks) |
 | `deepseek-v4-pro` | DeepSeek V4 Pro | No | Pro reasoning, 1M context (Fireworks) |
 | `qwen3p7-plus` | Qwen 3.7 Plus | Yes | 262K context |
@@ -612,7 +610,6 @@ SUPABASE_SERVICE_KEY=your_service_role_key
 
 # LLM Providers (0G router URL + model names are configured in src/config.ts)
 FIREWORKS_API_KEY=your_fireworks_key
-MIMO_API_KEY=your_mimo_key
 OG_API_KEY=your_0g_router_key
 GROQ_API_KEY=your_groq_key
 

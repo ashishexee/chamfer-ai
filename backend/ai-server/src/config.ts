@@ -1,3 +1,14 @@
+/** Reasoning depth accepted by a model via the OpenAI-compatible `reasoning_effort`. */
+export type ReasoningEffort =
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+  | 'none'
+  | 'adaptive';
+
 export interface ProviderConfig {
   baseUrl: string;
   model: string;
@@ -7,8 +18,14 @@ export interface ProviderConfig {
   maxTokens?: number;
   maxContextTokens?: number;
   isZeroG?: boolean;
-  /** Fireworks `reasoning_effort` value sent with every call to this provider. */
-  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'none';
+  /** Default `reasoning_effort` sent when the client doesn't choose one. */
+  reasoningEffort?: ReasoningEffort;
+  /**
+   * Levels this model verifiably accepts, ascending by depth. Absent means the
+   * model exposes no graded scale, so the UI shows no reasoning control at all.
+   * Verified against the live APIs by scripts/probe-reasoning.ts.
+   */
+  reasoningEfforts?: ReasoningEffort[];
 }
 
 const FIREWORKS_BASE = 'https://api.fireworks.ai/inference/v1';
@@ -43,25 +60,31 @@ export const config = {
       maxContextTokens: 1000000,
       isZeroG: true,
     },
-    'mimo': {
-      baseUrl: 'https://api.xiaomimimo.com/v1',
-      model: 'mimo-v2.5',
-      name: 'MiMo 2.5',
-      apiKey: process.env.MIMO_API_KEY || '',
+
+    // ── Meta Model API ──
+    // Contributor tier: prompts may be used to improve Meta's products.
+    // Levels are the set the API itself reports (its 400 for an invalid value
+    // enumerates them). Meta's docs claim "max" is Standard-tier only, but this
+    // endpoint accepts it — verified live, not taken from the docs.
+    // Declared first among the centralized providers so it leads that group in
+    // the model picker (the API returns providers in declaration order).
+    'muse-spark-1p3-contributor': {
+      baseUrl: MUSE_BASE,
+      model: 'muse-spark-1.3-contributor',
+      name: 'Muse Spark 1.3 (Contributor)',
+      apiKey: museKey,
       supportsVision: true,
-      maxTokens: 128000,
-      maxContextTokens: 1000000,
-    },
-    'mimo-pro': {
-      baseUrl: 'https://api.xiaomimimo.com/v1',
-      model: 'mimo-v2.5-pro',
-      name: 'MiMo 2.5 Pro',
-      apiKey: process.env.MIMO_API_KEY || '',
-      supportsVision: false,
-      maxTokens: 128000,
-      maxContextTokens: 1000000,
+      maxTokens: 131072,
+      maxContextTokens: 1048576,
+      reasoningEfforts: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+      reasoningEffort: 'max',
     },
 
+    // ── Fireworks AI ──
+    // Disabled: the Fireworks account is suspended (HTTP 412 on every call), so
+    // each model below fails at request time. Uncomment this whole block once
+    // the account is restored — FIREWORKS_BASE / fwKey above are kept for that.
+    /*
     'deepseek-v4-flash': {
       baseUrl: FIREWORKS_BASE,
       model: 'accounts/fireworks/models/deepseek-v4-flash',
@@ -145,6 +168,7 @@ export const config = {
       maxTokens: 32768,
       maxContextTokens: 262144,
     },
+    */
     'groq': {
       baseUrl: 'https://api.groq.com/openai/v1',
       model: 'qwen/qwen3-32b',
@@ -162,21 +186,6 @@ export const config = {
       supportsVision: true,
       maxTokens: 16384,
       maxContextTokens: 131072,
-    },
-
-    // ── Meta Model API ──
-    // Contributor tier: prompts may be used to improve Meta's products.
-    // reasoning_effort accepts minimal | low | medium | high | xhigh; "max" is
-    // Standard-tier only, so xhigh is the ceiling for the contributor model.
-    'muse-spark-1p3-contributor': {
-      baseUrl: MUSE_BASE,
-      model: 'muse-spark-1.3-contributor',
-      name: 'Muse Spark 1.3 (Contributor)',
-      apiKey: museKey,
-      supportsVision: true,
-      maxTokens: 131072,
-      maxContextTokens: 1048576,
-      reasoningEffort: 'xhigh',
     },
   } as Record<string, ProviderConfig>,
 };

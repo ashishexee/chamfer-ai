@@ -46,7 +46,7 @@ export function checkVisionSupport(images: string[] | undefined, providerSupport
     return { valid: true };
   }
   if (!providerSupportsVision) {
-    return { valid: false, error: 'Selected provider does not support image analysis. Choose a vision-capable provider: mimo, 0g, groq-vision, qwen3p7-plus, kimi-k2p6, minimax-m3' };
+    return { valid: false, error: 'Selected provider does not support image analysis. Choose a vision-capable provider: 0g, muse-spark-1p3-contributor, groq-vision' };
   }
   for (const img of images) {
     const validation = validateImageDataUrl(img);

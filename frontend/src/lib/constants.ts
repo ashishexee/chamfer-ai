@@ -17,8 +17,6 @@ export const MODEL_ENDPOINTS = {
 
 export const PROVIDERS: Provider[] = [
   { id: '0g', name: '0GM-1.0-35B-A3B', desc: 'TEE · 262K ctx · Vision · In-house' },
-  { id: 'mimo', name: 'MiMo 2.5', desc: 'Omni · 100 RPM · 10M TPM · Vision' },
-  { id: 'mimo-pro', name: 'MiMo 2.5 Pro', desc: 'Pro · 100 RPM · 10M TPM · Text only' },
   { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', desc: 'Fast & cheap · 1M ctx' },
   { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', desc: 'Pro reasoning · 1M ctx' },
   { id: 'deepseek-v4p1-flash', name: 'DeepSeek V4.1 Flash', desc: 'Vision · 1M ctx · Max reasoning' },

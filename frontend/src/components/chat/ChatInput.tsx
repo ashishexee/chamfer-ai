@@ -1,9 +1,11 @@
-import { ArrowUp, Brain, ImagePlus, Maximize2, Minimize2, X } from 'lucide-react';
+import { ArrowUp, ImagePlus, Maximize2, Minimize2, X } from 'lucide-react';
 import { useState, useRef, useCallback, useLayoutEffect } from 'react';
 import { AnimatedPlaceholder } from './AnimatedPlaceholder';
 import { ProviderSelector } from '@/components/layout/ProviderSelector';
+import { ReasoningSelector } from './ReasoningSelector';
 import { fileToBase64, validateImage, compressImage } from '@/lib/imageUtils';
 import { cn } from '@/lib/utils';
+import type { ReasoningEffort } from '@/types';
 
 interface ChatInputProps {
   prompt: string;
@@ -15,8 +17,8 @@ interface ChatInputProps {
   provider: string;
   setProvider: (v: string) => void;
   placeholder: string;
-  reasoningEnabled: boolean;
-  setReasoningEnabled: (v: boolean) => void;
+  reasoningEffort: ReasoningEffort | null;
+  setReasoningEffort: (v: ReasoningEffort) => void;
   showAnimatedPlaceholder?: boolean;
   images: string[];
   onImagesChange: (images: string[]) => void;
@@ -34,7 +36,7 @@ interface ChatInputProps {
  */
 export function ChatInput({
   prompt, setPrompt, onSubmit, isGenerating, isFocused, setIsFocused,
-  provider, setProvider, placeholder, reasoningEnabled, setReasoningEnabled,
+  provider, setProvider, placeholder, reasoningEffort, setReasoningEffort,
   showAnimatedPlaceholder, images, onImagesChange,
   providerSupportsVision, isConnected = true, hero = false,
 }: ChatInputProps) {
@@ -202,20 +204,7 @@ export function ChatInput({
 
         <div className="ml-auto flex items-center gap-2">
           <ProviderSelector selected={provider} onSelect={setProvider} requireVision={images.length > 0} />
-          <button
-            onClick={() => setReasoningEnabled(!reasoningEnabled)}
-            aria-pressed={reasoningEnabled}
-            className={cn(
-              'flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11.5px] font-medium transition-colors duration-150',
-              reasoningEnabled
-                ? 'bg-adam-blue/15 text-adam-blue'
-                : 'text-adam-text-tertiary hover:bg-white/[0.05] hover:text-adam-text-secondary'
-            )}
-            title={reasoningEnabled ? 'Reasoning mode — slower, more thorough' : 'Fast mode — quicker responses'}
-          >
-            <Brain className="h-3.5 w-3.5" />
-            {reasoningEnabled ? 'Think' : 'Fast'}
-          </button>
+          <ReasoningSelector provider={provider} value={reasoningEffort} onChange={setReasoningEffort} />
           <button
             onClick={() => onSubmit()}
             disabled={!isConnected || isGenerating || !canSend}
