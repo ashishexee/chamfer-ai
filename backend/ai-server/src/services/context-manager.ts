@@ -197,6 +197,7 @@ export function getMaxContextTokens(providerId: string): number {
     'glm-5p2': 1048576,
     'qwen3p7-plus': 1000000,
     'kimi-k2p6': 262144,
+    'muse-spark-1p3-contributor': 1048576,
     'groq': 131072,
     'groq-vision': 131072,
   };

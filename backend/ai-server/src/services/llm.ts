@@ -1,9 +1,17 @@
 import OpenAI from 'openai';
 import { spawn } from 'child_process';
-import { config } from '../config';
+import { config, type ProviderConfig } from '../config';
 import { buildPromptWithRefs, validateRequestedFiles } from '../lib/loader';
 import { CLARIFIER_SYSTEM_PROMPT } from './clarifier-prompt';
 import { normalizeChatId, verifyTEEResponse, type TeeStatus, type TeeSignatureReceipt } from '../0g/tee-verifier';
+
+/**
+ * Fireworks `reasoning_effort`, emitted only for providers that declare one.
+ * Kept behind a helper so every call to a provider is asked for the same effort.
+ */
+function reasoningParams(provider: ProviderConfig): Record<string, string> {
+  return provider.reasoningEffort ? { reasoning_effort: provider.reasoningEffort } : {};
+}
 
 // ─── JSON Response Extraction ────────────────────────────────────────
 
@@ -646,6 +654,7 @@ ${messageContent}`;
         model: provider.model,
         messages,
         ...(isZeroG ? { max_tokens: 32768, verify_tee: true } : {}),
+        ...reasoningParams(provider),
         temperature: 0.2,
         stream: true,
       } as any);
@@ -858,6 +867,7 @@ Respond with:
     const response = await llm.chat.completions.create({
       model: provider.model,
       messages: [{ role: 'user', content }],
+      ...reasoningParams(provider),
       temperature: 0.1,
     });
 
@@ -984,6 +994,7 @@ export async function checkClarification(
       temperature: 0.1,
       response_format: { type: 'json_object' },
       max_tokens: 2048,
+      ...reasoningParams(provider),
     });
 
     const rawResponse = response.choices[0]?.message?.content || '';
@@ -1003,6 +1014,7 @@ export async function checkClarification(
           temperature: 0.0,
           response_format: { type: 'json_object' },
           max_tokens: 2048,
+          ...reasoningParams(provider),
         });
         const retryRaw = retryResponse.choices[0]?.message?.content || '';
         console.log(`[CLARIFIER] Retry response: ${retryRaw.slice(0, 300)}`);

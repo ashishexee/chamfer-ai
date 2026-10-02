@@ -7,10 +7,17 @@ export interface ProviderConfig {
   maxTokens?: number;
   maxContextTokens?: number;
   isZeroG?: boolean;
+  /** Fireworks `reasoning_effort` value sent with every call to this provider. */
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'none';
 }
 
 const FIREWORKS_BASE = 'https://api.fireworks.ai/inference/v1';
 const fwKey = process.env.FIREWORKS_API_KEY || '';
+
+// Meta Model API — OpenAI SDK compatible. Base URL per Meta's docs
+// (https://dev.meta.ai/docs/overview); override MUSE_BASE_URL if needed.
+const MUSE_BASE = process.env.MUSE_BASE_URL || 'https://api.meta.ai/v1';
+const museKey = process.env.MUSE_API_KEY || '';
 
 export const config = {
   port: parseInt(process.env.PORT || '4000'),
@@ -28,10 +35,10 @@ export const config = {
     },
     '0g-deepseek': {
       baseUrl: 'https://router-api.0g.ai/v1',
-      model: 'deepseek-v4-flash',
-      name: 'DeepSeek V4 Flash',
+      model: 'deepseek-v4.1-flash',
+      name: 'DeepSeek V4.1 Flash',
       apiKey: process.env.OG_API_KEY || '',
-      supportsVision: false,
+      supportsVision: true,
       maxTokens: 384000,
       maxContextTokens: 1000000,
       isZeroG: true,
@@ -73,6 +80,16 @@ export const config = {
       maxTokens: 384000,
       maxContextTokens: 1000000,
     },
+    'deepseek-v4p1-flash': {
+      baseUrl: FIREWORKS_BASE,
+      model: 'accounts/fireworks/models/deepseek-v4p1-flash',
+      name: 'DeepSeek V4.1 Flash',
+      apiKey: fwKey,
+      supportsVision: true,
+      maxTokens: 384000,
+      maxContextTokens: 1048576,
+      reasoningEffort: 'max',
+    },
     'minimax-m3': {
       baseUrl: FIREWORKS_BASE,
       model: 'accounts/fireworks/models/minimax-m3',
@@ -99,6 +116,16 @@ export const config = {
       supportsVision: false,
       maxTokens: 131072,
       maxContextTokens: 1048576,
+    },
+    'glm-5p3-flash': {
+      baseUrl: FIREWORKS_BASE,
+      model: 'accounts/fireworks/models/glm-5p3-flash',
+      name: 'GLM 5.3 Flash',
+      apiKey: fwKey,
+      supportsVision: true,
+      maxTokens: 131072,
+      maxContextTokens: 1048576,
+      reasoningEffort: 'max',
     },
     'qwen3p7-plus': {
       baseUrl: FIREWORKS_BASE,
@@ -135,6 +162,21 @@ export const config = {
       supportsVision: true,
       maxTokens: 16384,
       maxContextTokens: 131072,
+    },
+
+    // ── Meta Model API ──
+    // Contributor tier: prompts may be used to improve Meta's products.
+    // reasoning_effort accepts minimal | low | medium | high | xhigh; "max" is
+    // Standard-tier only, so xhigh is the ceiling for the contributor model.
+    'muse-spark-1p3-contributor': {
+      baseUrl: MUSE_BASE,
+      model: 'muse-spark-1.3-contributor',
+      name: 'Muse Spark 1.3 (Contributor)',
+      apiKey: museKey,
+      supportsVision: true,
+      maxTokens: 131072,
+      maxContextTokens: 1048576,
+      reasoningEffort: 'xhigh',
     },
   } as Record<string, ProviderConfig>,
 };
