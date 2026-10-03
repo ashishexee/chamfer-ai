@@ -158,7 +158,6 @@ export function useGeneration(
           body: JSON.stringify({
             prompt: userMsg.content,
             provider,
-            history: messages,
             answers,
             reasoningEffort: reasoningEffort ?? undefined,
             images: userMsg.images,
@@ -400,9 +399,25 @@ export function useGeneration(
                   // Apply any visually-gated flips now so the final message is
                   // consistent with the completed run.
                   flushFlips();
-                  if (data.inspection) setInspection(data.inspection);
+                  if (data.inspection) {
+                    // Merge, don't replace: the done-event inspection carries no
+                    // vision fields, and blindly replacing would wipe the vision
+                    // verdict badges the earlier events set on the panel.
+                    setInspection(
+                      visionFeedback !== null
+                        ? ({
+                            ...data.inspection,
+                            visionChecking: false,
+                            visionVerified,
+                            visionFeedback: visionFeedback || undefined,
+                          } as any)
+                        : data.inspection,
+                    );
+                  }
                   if (data.snapshots) setSnapshots(data.snapshots);
-                  if (data.visionVerified) visionVerified = true;
+                  // Trust the actual vision verdict over the done flag: never
+                  // resurrect a recorded FIX back to "verified".
+                  if (data.visionVerified && visionFeedback === null) visionVerified = true;
                   if (data.sessionId) setSessionId(data.sessionId);
                   const remainingRunning = liveSteps.filter(
                     (s) => s.status === "running",
@@ -433,7 +448,17 @@ export function useGeneration(
                   throw new Error(data.error);
                 }
               } catch (e: any) {
-                if (e.message && !e.message.includes("JSON")) throw e;
+                // Re-throw the deliberate SSE `error`/logic throws; only swallow
+                // JSON.parse failures — and even those must not die silently on
+                // the `done` event (that meant the geometry never arrived).
+                if (!(e instanceof SyntaxError)) throw e;
+                if (currentEvent === "done") {
+                  console.error("[SSE] failed to parse done event:", e);
+                  throw new Error(
+                    "Response ended unexpectedly — the model finished but the deliverables never arrived. Please retry.",
+                  );
+                }
+                console.warn(`[SSE] ignoring malformed "${currentEvent}" event:`, e?.message);
               }
               currentEvent = "";
             }

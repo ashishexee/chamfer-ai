@@ -39,6 +39,19 @@ const museKey = process.env.MUSE_API_KEY || '';
 export const config = {
   port: parseInt(process.env.PORT || '4000'),
   cadServerUrl: process.env.CAD_SERVER_URL || 'http://localhost:5000',
+  // ── Streaming liveness / provider timeouts ──
+  /** Interval for `: ping` SSE comments that keep proxies/browsers attached. */
+  sseHeartbeatMs: parseInt(process.env.SSE_HEARTBEAT_MS || '15000'),
+  /** Independent budget for vision-FIX retries (separate from code retries). */
+  visionRetryLimit: parseInt(process.env.MAX_VISION_FIXES || '3'),
+  /** undici bodyTimeout ceiling for provider calls (idle between bytes). */
+  providerBodyTimeoutMs: parseInt(process.env.PROVIDER_BODY_TIMEOUT_MS || '1800000'),
+  /** undici headersTimeout ceiling — a provider that never answers headers. */
+  providerHeadersTimeoutMs: parseInt(process.env.PROVIDER_HEADERS_TIMEOUT_MS || '120000'),
+  /** Abort a streaming generation if the provider sends no first chunk. */
+  providerFirstByteTimeoutMs: parseInt(process.env.PROVIDER_FIRST_BYTE_TIMEOUT_MS || '900000'),
+  /** Abort slow non-streaming calls (clarifier). */
+  providerRequestTimeoutMs: parseInt(process.env.PROVIDER_REQUEST_TIMEOUT_MS || '180000'),
   providers: {
     '0g': {
       baseUrl: 'https://router-api.0g.ai/v1',

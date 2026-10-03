@@ -4,6 +4,7 @@ import { config, type ProviderConfig, type ReasoningEffort } from '../config';
 import { buildPromptWithRefs, validateRequestedFiles } from '../lib/loader';
 import { CLARIFIER_SYSTEM_PROMPT } from './clarifier-prompt';
 import { normalizeChatId, verifyTEEResponse, type TeeStatus, type TeeSignatureReceipt } from '../0g/tee-verifier';
+import { getProviderDispatcher, startFirstByteWatchdog, isAbortError, isProviderTimeout } from '../lib/http';
 
 /**
  * `reasoning_effort` for a provider call. A per-request override — the level the
@@ -17,6 +18,9 @@ function reasoningParams(
   const effort = override ?? provider.reasoningEffort;
   return effort ? { reasoning_effort: effort } : {};
 }
+
+/** Streaming errors that must NOT be retried — the provider is wedged/dead. */
+class FatalStreamError extends Error {}
 
 // ─── JSON Response Extraction ────────────────────────────────────────
 
@@ -577,7 +581,7 @@ export async function generateCadQueryCodeStream(
 ): Promise<LLMResult> {
   const { prompt, images, sessionHistory, previousCode, errorFeedback, repair, providerId, reasoningEffort, callbacks } = options;
   const provider = config.providers[providerId || '0g'] || config.providers['0g'];
-  const llm = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseUrl });
+  const llm = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseUrl, fetchOptions: { dispatcher: getProviderDispatcher() } });
   const isZeroG = provider.isZeroG === true;
   const maxPhases = 3;
 
@@ -593,9 +597,14 @@ export async function generateCadQueryCodeStream(
   // already has — nudges it to generate instead of looping on empty context.
   let noNewFilesNudge = '';
 
+  // Same-phase retries for prematurely-terminated streams. Meta-class endpoints
+  // sometimes drop a stream mid-response; retrying the SAME phase after a short
+  // backoff is cheaper (and fairer) than burning a context-request phase slot.
+  let streamRetryAttempt = 0;
+
+  phaseLoop:
   for (let phase = 1; phase <= maxPhases; phase++) {
     console.log(`[LLM] Phase ${phase}/${maxPhases} (refs loaded: ${loadedFiles.length})`);
-
     // Build system prompt: SKILL.md + all loaded references
     const systemPrompt = buildPromptWithRefs(loadedFiles);
     
@@ -655,32 +664,76 @@ ${messageContent}`;
     let fullContent = '';
     let fullReasoning = '';
     let lastChunk: any = null;
+    streamRetryAttempt = 0;
 
     try {
-      const stream = await llm.chat.completions.create({
-        model: provider.model,
-        messages,
-        ...(isZeroG ? { max_tokens: 32768, verify_tee: true } : {}),
-        ...reasoningParams(provider, reasoningEffort),
-        temperature: 0.2,
-        stream: true,
-      } as any);
+    // Abort if the provider never sends a first chunk (wedged endpoint), but
+    // disarm on first byte so a slow-but-alive stream is never killed.
+    // Terminated/dropped streams get same-phase retries (cheap: identical
+    // context) before consuming a phase slot.
+    while (true) {
+      const watchdog = startFirstByteWatchdog(config.providerFirstByteTimeoutMs);
+      fullContent = '';
+      fullReasoning = '';
+      lastChunk = null;
+      try {
+        const stream = await llm.chat.completions.create({
+          model: provider.model,
+          messages,
+          ...(isZeroG ? { max_tokens: 32768, verify_tee: true } : {}),
+          ...reasoningParams(provider, reasoningEffort),
+          temperature: 0.2,
+          stream: true,
+        } as any, { signal: watchdog.signal });
 
-      for await (const chunk of stream) {
-        lastChunk = chunk;
-        const delta = chunk.choices[0]?.delta;
-      if (!delta) continue;
+        let firstByteSeen = false;
+        for await (const chunk of stream) {
+          if (!firstByteSeen) {
+            firstByteSeen = true;
+            watchdog.disarm();
+          }
+          lastChunk = chunk;
+          const delta = chunk.choices[0]?.delta;
+          if (!delta) continue;
 
-      const reasoningChunk = (delta as any)?.reasoning_content;
-      if (reasoningChunk) {
-        fullReasoning += reasoningChunk;
-        callbacks?.onReasoning(reasoningChunk);
-      }
+          const reasoningChunk = (delta as any)?.reasoning_content;
+          if (reasoningChunk) {
+            fullReasoning += reasoningChunk;
+            callbacks?.onReasoning(reasoningChunk);
+          }
 
-      const contentChunk = delta?.content;
-      if (contentChunk) {
-        fullContent += contentChunk;
-        callbacks?.onContent(contentChunk);
+          const contentChunk = delta?.content;
+          if (contentChunk) {
+            fullContent += contentChunk;
+            callbacks?.onContent(contentChunk);
+          }
+        }
+        watchdog.disarm();
+        streamRetryAttempt = 0;
+        break;
+      } catch (streamErr: any) {
+        watchdog.disarm();
+        if (watchdog.fired()) {
+          throw new FatalStreamError(
+            `Provider sent no response after ${Math.round(config.providerFirstByteTimeoutMs / 60000)} min — likely wedged. Try a lower reasoning level.`,
+          );
+        }
+        if (isProviderTimeout(streamErr)) {
+          throw new FatalStreamError('Provider connection timed out (idle) — try a lower reasoning level or another model.');
+        }
+        const terminated =
+          streamErr?.message === 'terminated' || streamErr?.code === 'ECONNRESET' || streamErr?.type === 'aborted';
+        if (terminated) {
+          if (streamRetryAttempt < 2) {
+            streamRetryAttempt++;
+            console.error(`[LLM] Stream terminated prematurely — same-phase retry ${streamRetryAttempt}/2`);
+            await new Promise((r) => setTimeout(r, 3000 * streamRetryAttempt));
+            continue;
+          }
+          console.error('[LLM] Stream terminated prematurely — same-phase budget exhausted, advancing phase');
+          continue phaseLoop;
+        }
+        throw streamErr; // genuine API errors: surface to the outer catch
       }
     }
 
@@ -793,19 +846,19 @@ ${messageContent}`;
     
     callbacks?.onDone(result);
     return result;
-    
-  } catch (e: unknown) {
-    const err = e as any;
-    if (err.message === 'terminated' || err.code === 'ECONNRESET' || err.type === 'aborted') {
-      console.error(`[LLM] Stream terminated prematurely`);
-      continue; // Try next phase
+
+    } catch (e: unknown) {
+      // A wedged/dead provider surfaced as FatalStreamError from the inner
+      // stream loop — never retry, propagate to the route so the UI gets an
+      // accurate message instead of silent phase burns.
+      if (e instanceof FatalStreamError) throw e;
+      const err = e as any;
+      const errorMsg = `${err.constructor?.name}: ${err.message}`;
+      console.error(`[LLM] ERROR: ${errorMsg}`);
+      callbacks?.onError(errorMsg);
+      // Genuine (non-fatal) errors: advance to the next phase.
+      continue phaseLoop;
     }
-    const errorMsg = `${err.constructor?.name}: ${err.message}`;
-    console.error(`[LLM] ERROR: ${errorMsg}`);
-    callbacks?.onError(errorMsg);
-    // Continue to next phase on error
-    continue;
-  }
   } // End of phase loop
 
   // If we exhaust all phases without generating code, throw error
@@ -832,7 +885,7 @@ export async function inspectWithVision(
     return { needsFix: false, feedback: 'Vision not supported by provider' };
   }
 
-  const llm = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseUrl });
+  const llm = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseUrl, fetchOptions: { dispatcher: getProviderDispatcher() } });
 
   const inspectionSummary = inspection
     ? `Bounding box: ${inspection.bounding_box?.size?.join('x') || 'unknown'}mm, Volume: ${inspection.volume?.toFixed(1) || 'unknown'}mm³, Faces: ${inspection.face_count || 'unknown'}, Valid: ${inspection.is_valid}`
@@ -984,7 +1037,7 @@ export async function checkClarification(
 
   console.log(`[CLARIFIER] Checking prompt: "${prompt.slice(0, 80)}..." using ${clarifierProviderId}, Images: ${images?.length || 0}`);
 
-  const llm = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseUrl });
+  const llm = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseUrl, fetchOptions: { dispatcher: getProviderDispatcher() } });
 
   try {
     let userContent: any = `Analyze this CAD generation prompt:\n\n${prompt}`;
@@ -1000,11 +1053,20 @@ export async function checkClarification(
       ],
       temperature: 0.1,
       response_format: { type: 'json_object' },
-      max_tokens: 2048,
+      // Reasoning-heavy models (Muse at effort=max) spend a large share of the
+      // budget thinking; 2048 left them zero visible content to work with.
+      max_tokens: 8192,
       ...reasoningParams(provider),
-    });
+    }, { signal: AbortSignal.timeout(config.providerRequestTimeoutMs) });
 
-    const rawResponse = response.choices[0]?.message?.content || '';
+    let rawResponse = response.choices[0]?.message?.content || '';
+    // Empty visible content but a reasoning field: some OpenAI-compatible
+    // endpoints only return the model output nested under `reasoning_content`.
+    if (!rawResponse.trim()) {
+      const msg = response.choices[0]?.message as any;
+      rawResponse = String(msg?.reasoning_content ?? msg?.reasoning ?? '').trim();
+      if (rawResponse) console.log(`[CLARIFIER] Empty content — recovered ${rawResponse.length} chars from reasoning field`);
+    }
     console.log(`[CLARIFIER] Response length: ${rawResponse.length} chars`);
     console.log(`[CLARIFIER] Response preview: ${rawResponse.slice(0, 300)}`);
 
@@ -1020,14 +1082,20 @@ export async function checkClarification(
           ],
           temperature: 0.0,
           response_format: { type: 'json_object' },
-          max_tokens: 2048,
+          max_tokens: 8192,
           ...reasoningParams(provider),
-        });
-        const retryRaw = retryResponse.choices[0]?.message?.content || '';
+        }, { signal: AbortSignal.timeout(config.providerRequestTimeoutMs) });
+        let retryRaw = retryResponse.choices[0]?.message?.content || '';
+        if (!retryRaw.trim()) {
+          const msg = retryResponse.choices[0]?.message as any;
+          retryRaw = String(msg?.reasoning_content ?? msg?.reasoning ?? '').trim();
+        }
         console.log(`[CLARIFIER] Retry response: ${retryRaw.slice(0, 300)}`);
         const retryResult = extractClarification(retryRaw);
         if (retryResult) return retryResult;
       } catch (retryErr) {
+        // A wedged endpoint must not be silently downgraded to "no questions".
+        if (isAbortError(retryErr) || isProviderTimeout(retryErr)) throw retryErr;
         console.error(`[CLARIFIER] Retry also failed: ${(retryErr as any).message}`);
       }
       return { isClear: true, questions: [], standardizedPrompt: prompt };
@@ -1047,6 +1115,13 @@ export async function checkClarification(
     return result;
   } catch (e: unknown) {
     const err = e as any;
+    // Provider dead/timed out — surface it instead of pretending the prompt
+    // was clear; the caller can then report a real error instead of hanging.
+    if (isAbortError(e) || isProviderTimeout(e)) {
+      throw new Error(
+        `Clarifier provider timed out after ${Math.round(config.providerRequestTimeoutMs / 60000)} min — model endpoint appears dead`,
+      );
+    }
     console.error(`[CLARIFIER] Error: ${err.message}`);
     // On error, skip clarification and proceed with original prompt
     return { isClear: true, questions: [], standardizedPrompt: prompt };

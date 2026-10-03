@@ -13,6 +13,7 @@ import { config, type ReasoningEffort } from '../config';
 import { RETRY_TEMPLATE } from '../lib/loader';
 import { expandPrompt } from '../services/prompt-expander';
 import { checkVisionSupport } from '../services/vision';
+import { startHeartbeat } from '../lib/heartbeat';
 import {
   createSession,
   getSession,
@@ -23,6 +24,13 @@ import {
 import type { SessionMessage } from '../services/session';
 
 const MAX_RETRIES = 3;
+/**
+ * Independent budget for vision-FIX regenerations. A model that executes fine
+ * but gets rejected by the visual reviewer burns a vision-fix retry, NOT a
+ * code-retry slot — so a shape problem never silently eats the attempts
+ * reserved for broken/failed code.
+ */
+const MAX_VISION_FIXES = config.visionRetryLimit;
 
 async function callCadServer(endpoint: string, body: Record<string, unknown>) {
   const res = await fetch(`${config.cadServerUrl}${endpoint}`, {
@@ -90,9 +98,8 @@ interface CadResult {
 }
 
 export async function handleGenerate(req: Request, res: Response): Promise<void> {
-  const { prompt, history, provider, enableVision, answers, clarificationProvider, images, sessionId, editMode, reasoningEffort } = req.body as {
+  const { prompt, provider, enableVision, answers, clarificationProvider, images, sessionId, editMode, reasoningEffort } = req.body as {
     prompt?: string;
-    history?: { role: string; content: string }[];
     provider?: string;
     enableVision?: boolean;
     answers?: string;
@@ -144,7 +151,14 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
+    // Tell nginx not to buffer this response, even before its config is updated.
+    'X-Accel-Buffering': 'no',
   });
+
+  // Models that keep reasoning server-side (e.g. Muse) stream zero bytes while
+  // thinking; idle heartbeats keep nginx proxy_read_timeout and the browser
+  // from dropping the connection mid-generation.
+  startHeartbeat(res, config.sseHeartbeatMs);
 
   let code = '';
   let parameters: Record<string, ParameterSchema> = {};
@@ -267,13 +281,20 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
     : 'Extracting dimensions, features, and parameters from your prompt';
   step('analyze', 'search', 'Analyzing request', analyzeDetail);
 
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    console.log(`[ROUTE] Attempt ${attempt + 1}/${MAX_RETRIES}`);
+  let attempt = 0;
+  let visionFixes = 0;
+  // Last actual visual-review verdict; undefined = vision never ran / no verdict.
+  let visionPassed: boolean | undefined;
+
+  while (attempt < MAX_RETRIES) {
+    console.log(`[ROUTE] Attempt ${attempt + 1}/${MAX_RETRIES} (vision fixes used: ${visionFixes}/${MAX_VISION_FIXES})`);
     sendSSE(res, 'attempt', { attempt: attempt + 1, maxRetries: MAX_RETRIES });
 
-    // Build error feedback for retry
+    // Build error feedback for retry. `lastError` (not `attempt > 0`) marks a
+    // retry, because vision-fix regenerations consume their own budget and
+    // leave the code-attempt counter untouched.
     let errorFeedback: string | undefined;
-    if (attempt > 0 && lastError) {
+    if (lastError) {
       if (TARGETED_RETRY_CATEGORIES.has(lastErrorCategory)) {
         // Vision verdicts / geometry diagnostics / no-code notices already
         // contain targeted instructions — pass them through with the code
@@ -290,7 +311,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
           .replace('{code}', code);
         console.log(`[ROUTE] Retry ${attempt}: ${category} error`);
       }
-    } else if (editMode && previousCodeForRetry && attempt === 0) {
+    } else if (editMode && previousCodeForRetry && !lastError) {
       // Edit mode: include previous code as context for the first attempt
       errorFeedback = `Previous code:\n\n\`\`\`python\n${previousCodeForRetry}\n\`\`\`\n\nThe user wants to modify this design. Please update the code according to the new request: "${effectivePrompt}". Return the complete updated JSON with all fields (code, parameters, description, tags).`;
     }
@@ -300,12 +321,12 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         prompt: effectivePrompt,
         images,
         sessionHistory,
-        previousCode: attempt > 0 ? code : (editMode ? previousCodeForRetry : undefined),
+        previousCode: lastError ? code : (editMode ? previousCodeForRetry : undefined),
         errorFeedback,
-        repair: attempt > 0,
+        repair: !!lastError,
         providerId,
         reasoningEffort: reasoningOverride,
-        callbacks: attempt === 0 ? {
+        callbacks: !lastError ? {
           onReasoning: (chunk) => sendSSE(res, 'reasoning', { chunk }),
           onContent: () => {},
           onDone: (r) => sendSSE(res, 'llm-done', { codeLength: r.code.length }),
@@ -331,7 +352,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       rawResponse = result.rawResponse;
       reasoning = result.reasoning;
 
-      if (attempt === 0) {
+      if (!lastError) {
         stepDone('analyze', 'Identified the requested geometry type and parameters');
       }
 
@@ -339,7 +360,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       // to completion inside the LLM call, so resolving it here (not at the end
       // of the attempt) keeps the timeline truthful: tee-verify closes before
       // syntax begins, in the order the work actually happened.
-      if (attempt === 0 && result.zeroG?.teeStatus) {
+      if (!lastError && result.zeroG?.teeStatus) {
         if (result.zeroG.teeStatus === 'verified') {
           stepDone('tee-verify', 'Signature verified against on-chain TEE identity');
         } else if (result.zeroG.teeStatus === 'failed') {
@@ -356,6 +377,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         lastErrorCategory = 'NO_CODE';
         stepError('generate', 'No Python code found in response');
         sendSSE(res, 'retry', { reason: lastError, category: 'NO_CODE', hint: 'Output JSON with a valid "code" field.' });
+        attempt++;
         continue;
       }
 
@@ -371,6 +393,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         stepError('syntax', lastError.slice(0, 100));
         console.log(`[ROUTE] AST check failed: ${lastError.slice(0, 120)}`);
         sendSSE(res, 'retry', { reason: lastError, category: 'SYNTAX', hint: 'Fix Python syntax error.', attempt: attempt + 1 });
+        attempt++;
         continue;
       }
       stepDone('syntax', 'Python syntax is valid');
@@ -401,6 +424,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         stepError('execute', `${category}: ${errorMsg.slice(0, 80)}`);
         console.log(`[ROUTE] Error [${category}]: ${errorMsg.slice(0, 120)}`);
         sendSSE(res, 'retry', { reason: errorMsg, category, hint, attempt: attempt + 1 });
+        attempt++;
         continue;
       }
 
@@ -453,11 +477,12 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
             inspection,
           });
           stepDone('repair', 'Repair instructions sent — retrying');
+          attempt++;
           continue;
         }
       }
 
-      // ── VISUAL INSPECTION LOOP (optional, enabled by flag) ──
+      // ── VISUAL INSPECTION (own retry budget, separate from code retries) ──
       if (supportsVision && cadResult.png_snapshots && Object.keys(cadResult.png_snapshots).length > 0) {
         step('vision', 'eye', 'Visual inspection', 'Model reviewing rendered snapshots to verify correctness');
         sendSSE(res, 'vision-check', { message: 'Visually inspecting rendered model...' });
@@ -475,16 +500,30 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
           feedback: visionResult.feedback,
         });
 
-        if (visionResult.needsFix && attempt < MAX_RETRIES - 1) {
-          console.log(`[ROUTE] Vision inspection: NEEDS_FIX — ${visionResult.feedback.slice(0, 120)}`);
+        // Record the ACTUAL verdict — delivery honesty depends on it, not on
+        // whether vision merely ran.
+        visionPassed = !visionResult.needsFix;
+
+        if (visionResult.needsFix && visionFixes < MAX_VISION_FIXES) {
+          console.log(`[ROUTE] Vision inspection: NEEDS_FIX (${visionFixes + 1}/${MAX_VISION_FIXES}) — ${visionResult.feedback.slice(0, 120)}`);
           step('vision', 'eye', 'Visual inspection', `Model found issues: ${visionResult.feedback.slice(0, 60)}`, 'error');
           lastError = `Visual inspection found issues with your model:\n${visionResult.feedback}\n\nThe rendered snapshots show that the model doesn't fully match the user's request. Fix the code and return the complete updated JSON.`;
           lastErrorCategory = 'VISION_FIX';
+          visionFixes++;
           continue;
         }
 
-        stepDone('vision', 'Model confirmed the render looks correct');
-        console.log(`[ROUTE] Vision inspection: PASSED`);
+        if (visionResult.needsFix) {
+          // Vision budget exhausted — deliver, but honestly flagged.
+          console.log(`[ROUTE] Vision inspection: NEEDS_FIX — budget exhausted, delivering unverified`);
+          step('vision', 'eye', 'Visual inspection', `Model found issues: ${visionResult.feedback.slice(0, 60)}`, 'error');
+          sendSSE(res, 'validation-warning', {
+            message: `⚠️ Visual check flagged unresolved issues: ${visionResult.feedback}`,
+          });
+        } else {
+          stepDone('vision', 'Model confirmed the render looks correct');
+          console.log(`[ROUTE] Vision inspection: PASSED`);
+        }
       }
 
       // ── SUCCESS ──
@@ -504,7 +543,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       });
 
       step('deliver', 'package-check', 'Preparing deliverables', 'Packaging STEP, STL, GLB, and snapshots for download');
-      console.log(`[ROUTE] SUCCESS on attempt ${attempt + 1}${supportsVision ? ' (vision-verified)' : ''}`);
+      console.log(`[ROUTE] SUCCESS on attempt ${attempt + 1}${supportsVision ? (visionPassed ? ' (vision-verified)' : ' (vision NOT verified)') : ''}`);
       stepDone('deliver', 'Files packaged and ready');
 
       // Surface a failed TEE signature loudly — per 0G docs this means the response
@@ -551,7 +590,9 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         inspection,
         snapshots: cadResult.snapshots || {},
         dimViews: cadResult.dim_views || {},
-        visionVerified: supportsVision,
+        // True only when the vision reviewer explicitly passed the model —
+        // not merely when a vision-capable provider ran the check.
+        visionVerified: visionPassed === true,
         ...(teeProof ? { teeProof } : {}),
         ...(result.zeroG ? { zeroG: result.zeroG } : {}),
       });
