@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { AppStore } from "@/hooks/useAppStore";
 import { API_URL, getProviderDisplayName } from "@/lib/constants";
 import { seedPipeline, STEP_RANK } from "@/lib/pipelineSteps";
@@ -74,6 +74,7 @@ export function useGeneration(
   } = store;
 
   const { uploadModelTo0G, saveCurrentSession, resetParams } = helpers;
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Check if current provider supports vision
   useEffect(() => {
@@ -108,6 +109,7 @@ export function useGeneration(
       editMode?: boolean,
     ) => {
       const activePrompt = overridePrompt ?? prompt;
+      const effortUsed = reasoningEffort ?? undefined;
       if ((!activePrompt.trim() && images.length === 0) || isGenerating) return;
       if (!auth.isConnected) {
         setPrompt("");
@@ -140,6 +142,8 @@ export function useGeneration(
 
       if (!editMode) {
         setPrompt("");
+        // Reference images belong to the submitted turn — clear the composer.
+        setImages([]);
       }
       setIsGenerating(true);
       setStreamReasoning("");
@@ -155,11 +159,14 @@ export function useGeneration(
 
       // Declared outside the try so the catch path can attach the timeline to its error message.
       let liveSteps: WorkflowStep[] = seedPipeline({ clarifyDone: !!answers });
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
       try {
         const res = await fetch(`${API_URL}/api/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...authHeaders() },
+          signal: controller.signal,
           body: JSON.stringify({
             prompt: userMsg.content,
             provider,
@@ -524,7 +531,10 @@ export function useGeneration(
               : finalData.visionVerified
                 ? `Generated with ${getProviderDisplayName(finalData.provider || provider)} (vision-verified)`
                 : `Generated with ${getProviderDisplayName(finalData.provider || provider)}`,
-            provider: finalData.provider,
+            provider: finalData.provider || provider,
+            // Prefer the effort the backend actually used (it may have dropped
+            // a rung after the provider rejected the requested level).
+            reasoningEffort: finalData.reasoningEffort ?? effortUsed,
             reasoning: finalReasoning,
             dimViews:
               Object.keys(liveDimViews).length > 0
@@ -723,16 +733,24 @@ export function useGeneration(
           }
         }
       } catch (e: any) {
+        if (e?.name === 'AbortError' || controller.signal.aborted) return;
         const errorMsg = e.message?.includes("Failed to fetch")
           ? "Cannot connect to server. Make sure ai-server and cad-server are running."
           : e.message;
         const errorMsgObj: Message = {
           role: "assistant",
           content: `Error: ${errorMsg}`,
+          // Identify the attempted model/effort in the hover footer.
+          provider,
+          reasoningEffort: effortUsed,
           error: errorMsg,
           // Keep the timeline visible on errors — the failed step shows red and
           // everything after it never started, so it was never revealed.
-          steps: liveSteps,
+          steps: liveSteps.map((step) =>
+            step.status === 'running'
+              ? { ...step, status: 'error' as const, detail: 'Generation failed' }
+              : step,
+          ),
           timestamp: Date.now(),
         };
         setMessages((prev) => {
@@ -748,6 +766,7 @@ export function useGeneration(
           return next;
         });
       } finally {
+        abortControllerRef.current = null;
         setIsGenerating(false);
         setStreamReasoning("");
         reasoningBufferRef.current = "";
@@ -773,6 +792,51 @@ export function useGeneration(
       uploadModelTo0G,
     ],
   );
+
+  const handleStop = useCallback(() => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsGenerating(false);
+    setStreamReasoning("");
+    reasoningBufferRef.current = "";
+    if (reasoningRafRef.current) {
+      cancelAnimationFrame(reasoningRafRef.current);
+      reasoningRafRef.current = null;
+    }
+
+    const idx = assistantMessageIdRef.current;
+    setMessages((prev) => {
+      const next = [...prev];
+      if (idx !== null && next[idx]) {
+        const msg = next[idx];
+        next[idx] = {
+          ...msg,
+          content: msg.content || 'Generation stopped.',
+          warning: 'Generation stopped by you.',
+          steps: (msg.steps || []).map((step) =>
+            step.status === 'running'
+              ? { ...step, status: 'error' as const, detail: 'Stopped by user' }
+              : step,
+          ),
+        };
+      } else {
+        next.push({
+          role: 'assistant',
+          content: 'Generation stopped.',
+          warning: 'Generation stopped by you.',
+          timestamp: Date.now(),
+        });
+      }
+      return next;
+    });
+  }, [
+    setIsGenerating,
+    setStreamReasoning,
+    setMessages,
+    reasoningBufferRef,
+    reasoningRafRef,
+    assistantMessageIdRef,
+  ]);
 
   const handleClarificationSubmit = useCallback(
     (answers: string, answerList: { question: string; answer: string }[]) => {
@@ -889,6 +953,7 @@ export function useGeneration(
 
   return {
     handleGenerate,
+    handleStop,
     handleClarificationSubmit,
     handleEdit,
     handleEditSubmit,

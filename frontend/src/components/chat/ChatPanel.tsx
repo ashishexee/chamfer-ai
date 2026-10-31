@@ -12,6 +12,7 @@ import type { ModelIteration } from "@/types";
 interface ChatPanelProps {
   store: AppStore;
   onGenerate: () => void;
+  onStop: () => void;
   onClarificationSubmit: (
     answers: string,
     answerList: { question: string; answer: string }[],
@@ -32,6 +33,7 @@ interface ChatPanelProps {
 export function ChatPanel({
   store,
   onGenerate,
+  onStop,
   onClarificationSubmit,
   onEdit,
   onEditSubmit,
@@ -67,6 +69,7 @@ export function ChatPanel({
     activeIterationId,
     previewIteration,
     previewLoadingId,
+    sessionLoading,
     iterationError,
     setIterationError,
     chatMountKey,
@@ -76,12 +79,12 @@ export function ChatPanel({
   } = store;
 
   return (
-    <div className="relative flex h-full min-w-0 flex-col border-r border-adam-neutral-700/40 bg-adam-bg-secondary-dark">
+    <div className="relative flex h-full min-w-0 flex-col border-r border-white/[0.06] bg-adam-bg-secondary-dark">
       {/* Message list */}
       <div
         ref={chatContainerRef}
         onScroll={handleScroll}
-        className="chat-scroll flex-1 overflow-y-auto px-4 py-4 space-y-3.5"
+        className="chat-scroll flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 space-y-4"
       >
         {messages.map((msg, i) =>
           msg.clarification ? (
@@ -127,6 +130,7 @@ export function ChatPanel({
                   fallbackTxSeqs={i === messages.length - 1 ? txSeqs : null}
                   previewId={previewIteration?.id ?? null}
                   previewLoadingId={previewLoadingId}
+                  sessionLoading={sessionLoading}
                   onPreview={onPreviewIteration}
                   onGoBack={onGoBack}
                 />
@@ -136,7 +140,6 @@ export function ChatPanel({
         )}
         {isGenerating && (
           <StreamingMessage
-            provider={provider}
             steps={
               messages.length > 0 &&
               messages[messages.length - 1].role === "assistant"
@@ -174,6 +177,7 @@ export function ChatPanel({
           prompt={prompt}
           setPrompt={setPrompt}
           onSubmit={onGenerate}
+          onStop={onStop}
           isGenerating={isGenerating}
           isFocused={isFocused}
           setIsFocused={setIsFocused}

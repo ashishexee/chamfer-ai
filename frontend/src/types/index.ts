@@ -102,6 +102,7 @@ export interface Message {
   specifications?: Specification[];
   reasoning?: string;
   provider?: string;
+  reasoningEffort?: ReasoningEffort;
   error?: string;
   clarification?: ClarificationOption[];
   clarificationAnswers?: ClarificationAnswer[];

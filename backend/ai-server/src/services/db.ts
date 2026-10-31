@@ -165,7 +165,8 @@ export async function saveChatSession(
     const { error: updateErr } = await supabase
       .from('chat_sessions')
       .update({
-        title,
+        // Deliberately do NOT rewrite `title` here: the user may have renamed
+        // the chat, and every auto-save should preserve that name.
         parameters: parameters || null,
         updated_at: new Date().toISOString(),
       })
@@ -204,6 +205,30 @@ export async function saveChatSession(
     latestMessageOrder: inserted.latestMessageOrder,
     latestMessageId: inserted.latestMessageId,
   };
+}
+
+/** Rename a chat. Ownership is enforced by the wallet predicate. */
+export async function renameChatSession(
+  sessionId: string,
+  walletAddress: string,
+  title: string,
+) {
+  const clean = title.trim().replace(/\s+/g, ' ').slice(0, 120);
+  if (!clean) return null;
+
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .update({ title: clean })
+    .eq('id', sessionId)
+    .eq('user_wallet', walletAddress)
+    .select('id, title')
+    .maybeSingle();
+
+  if (error) {
+    console.error('[DB] renameChatSession error:', error.message);
+    return null;
+  }
+  return data;
 }
 
 export async function getChatSessions(walletAddress: string) {

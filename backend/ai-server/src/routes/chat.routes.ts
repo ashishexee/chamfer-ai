@@ -4,6 +4,7 @@ import {
   saveChatSession,
   getChatSessions,
   getChatSession,
+  renameChatSession,
   listSessionIterations,
 } from '../services/db';
 import { toIteration } from '../lib/serialize';
@@ -61,6 +62,29 @@ router.get('/sessions', authMiddleware, async (req, res) => {
     const walletAddress = (req as any).walletAddress;
     const sessions = await getChatSessions(walletAddress);
     res.json({ sessions });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+router.patch('/sessions/:sessionId', authMiddleware, async (req, res) => {
+  try {
+    const walletAddress = (req as any).walletAddress;
+    const { title } = req.body as { title?: unknown };
+
+    if (typeof title !== 'string' || !title.trim()) {
+      res.status(400).json({ error: 'A non-empty title is required' });
+      return;
+    }
+
+    const session = await renameChatSession(req.params.sessionId, walletAddress, title);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found or not owned by this wallet' });
+      return;
+    }
+
+    res.json({ success: true, session });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     res.status(500).json({ error: msg });

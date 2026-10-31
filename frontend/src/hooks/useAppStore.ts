@@ -137,6 +137,8 @@ export function useAppStore() {
   const [rewindTarget, setRewindTarget] = useState<ModelIteration | null>(null);
   const [rewinding, setRewinding] = useState(false);
   const [iterationError, setIterationError] = useState<string | null>(null);
+  /** True while a stored chat is being hydrated (history + 0G artifacts). */
+  const [sessionLoading, setSessionLoading] = useState(false);
 
   // ── Panel UI state ──
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -296,6 +298,8 @@ export function useAppStore() {
     setRewinding,
     iterationError,
     setIterationError,
+    sessionLoading,
+    setSessionLoading,
 
     // Panel UI
     sidebarOpen,

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Plus, LogOut, Wallet, Copy, Check, Search, X, ChevronsUpDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Plus, LogOut, Wallet, Copy, Check, Search, X, ChevronsUpDown, PanelLeftClose, PanelLeftOpen, Pencil } from 'lucide-react';
 import { WalletAvatar } from '@/components/layout/WalletAvatar';
 import { GlideMenu } from '@/components/ui/glide-menu';
 import type { SessionListItem } from '@/types';
@@ -17,6 +17,7 @@ interface SidebarProps {
   sessions?: SessionListItem[];
   activeSessionId?: string | null;
   onSelectSession?: (id: string) => void;
+  onRenameSession?: (id: string, title: string) => void | Promise<void>;
 }
 
 /* Width + copy-fade motion, from Beautiful UI's sidebar-nav storyboard.
@@ -35,11 +36,14 @@ function truncateAddress(addr: string): string {
 export function Sidebar({
   isOpen, onNewTask, onToggleSidebar, walletAddress, isConnected,
   isAuthLoading, onConnect, onDisconnect,
-  sessions, activeSessionId, onSelectSession,
+  sessions, activeSessionId, onSelectSession, onRenameSession,
 }: SidebarProps) {
   const [copied, setCopied] = useState(false);
   const [query, setQuery] = useState('');
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const renameCancelledRef = useRef(false);
 
   // Close the wallet menu on outside pointer-down, Escape, or sidebar collapse
   useEffect(() => {
@@ -85,6 +89,26 @@ export function Sidebar({
     s.title.toLowerCase().includes(query.trim().toLowerCase()),
   );
 
+  const startRename = (session: SessionListItem) => {
+    renameCancelledRef.current = false;
+    setRenamingId(session.id);
+    setRenameValue(session.title || '');
+  };
+
+  const finishRename = (id: string) => {
+    const title = renameValue.trim();
+    if (title) void onRenameSession?.(id, title);
+    renameCancelledRef.current = false;
+    setRenamingId(null);
+    setRenameValue('');
+  };
+
+  const cancelRename = () => {
+    renameCancelledRef.current = true;
+    setRenamingId(null);
+    setRenameValue('');
+  };
+
   return (
     <TooltipProvider delayDuration={0}>
       <aside
@@ -117,7 +141,7 @@ export function Sidebar({
             <span
               className={`flex-1 whitespace-nowrap pl-2 font-['Plus_Jakarta_Sans',sans-serif] text-base font-bold tracking-wide text-adam-text-primary ${copyCls}`}
             >
-              Chamfer <span className="text-adam-blue">AI</span>
+              Chamfer <span className="text-adam-accent">AI</span>
             </span>
 
             <button
@@ -140,9 +164,9 @@ export function Sidebar({
               <button
                 type="button"
                 onClick={onNewTask}
-                className="flex h-9 w-full items-center gap-2 rounded-lg bg-white/[0.04] px-3 text-[13px] font-medium text-adam-text-primary transition-colors duration-150 hover:bg-white/[0.07] active:scale-[0.99]"
+                className="flex h-9 w-full items-center gap-2 rounded-lg bg-white/[0.04] px-3 text-[13px] font-medium text-adam-text-primary transition-colors duration-150 hover:bg-adam-accent/10 active:scale-[0.99]"
               >
-                <Plus className="h-4 w-4 shrink-0 text-adam-text-secondary" />
+                <Plus className="h-4 w-4 shrink-0 text-adam-accent" />
                 New Creation
               </button>
             </div>
@@ -203,25 +227,86 @@ export function Sidebar({
                     {filteredSessions.slice(0, 30).map((s) => {
                       const active = activeSessionId === s.id;
                       return (
-                        <button
+                        <div
                           key={s.id}
                           data-row
-                          type="button"
-                          onClick={() => onSelectSession?.(s.id)}
                           title={s.title}
-                          className={`relative z-10 flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left transition-[background-color,color,transform] duration-150 active:scale-[0.99] ${
+                          className={`group/row relative z-10 flex h-8 w-full items-center gap-1.5 rounded-lg px-2 text-left transition-[background-color,color,transform] duration-150 ${
                             active
                               ? 'bg-white/[0.06] text-white group-hover/glide:bg-transparent'
                               : 'text-adam-text-secondary hover:text-adam-text-primary'
                           }`}
                         >
                           {active && (
-                            <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-adam-blue" />
+                            <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-adam-accent" />
                           )}
-                          <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
-                            {s.title}
-                          </span>
-                        </button>
+                          {renamingId === s.id ? (
+                            <>
+                              <input
+                                autoFocus
+                                value={renameValue}
+                                maxLength={120}
+                                onChange={(event) => setRenameValue(event.target.value)}
+                                onFocus={(event) => event.currentTarget.select()}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    finishRename(s.id);
+                                  } else if (event.key === 'Escape') {
+                                    event.preventDefault();
+                                    cancelRename();
+                                  }
+                                }}
+                                onBlur={() => {
+                                  if (renameCancelledRef.current) {
+                                    renameCancelledRef.current = false;
+                                    return;
+                                  }
+                                  finishRename(s.id);
+                                }}
+                                aria-label="Chat title"
+                                className="min-w-0 flex-1 rounded bg-white/[0.06] px-1.5 py-0.5 text-[13px] font-medium text-white outline-none ring-1 ring-adam-accent/40"
+                              />
+                              <button
+                                type="button"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => finishRename(s.id)}
+                                aria-label="Save chat name"
+                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-emerald-400 transition-colors hover:bg-white/[0.08]"
+                              >
+                                <Check className="h-3 w-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={cancelRename}
+                                aria-label="Cancel rename"
+                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-adam-text-tertiary transition-colors hover:bg-white/[0.08] hover:text-white"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => onSelectSession?.(s.id)}
+                                className="min-w-0 flex-1 truncate text-left text-[13px] font-medium outline-none"
+                              >
+                                {s.title}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => startRename(s)}
+                                aria-label="Rename chat"
+                                title="Rename chat"
+                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-adam-text-tertiary opacity-60 transition-all hover:bg-white/[0.08] hover:text-white md:opacity-0 md:group-hover/row:opacity-100 md:focus-visible:opacity-100"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       );
                     })}
                     {filteredSessions.length === 0 && (
@@ -262,7 +347,7 @@ export function Sidebar({
                     {walletMenuOpen && (
                       <div
                         data-wallet-menu
-                        className="absolute bottom-full left-2 right-2 z-50 mb-2 overflow-hidden rounded-xl border border-white/[0.06] bg-[#1E1F20] p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.55)]"
+                        className="absolute bottom-full left-2 right-2 z-50 mb-2 overflow-hidden rounded-xl border border-white/[0.06] bg-[#202020] p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.55)]"
                         style={{
                           animation: 'pop-in 180ms cubic-bezier(0.23,1,0.32,1) both',
                           transformOrigin: 'bottom left',
@@ -318,7 +403,7 @@ export function Sidebar({
                     <button
                       onClick={onConnect}
                       disabled={isAuthLoading}
-                      className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-adam-blue/40 bg-adam-blue/10 py-1.5 text-[11.5px] font-semibold text-adam-blue transition-colors duration-150 hover:bg-adam-blue/20 disabled:opacity-50"
+                      className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-adam-accent/40 bg-adam-accent/10 py-1.5 text-[11.5px] font-semibold text-adam-accent transition-colors duration-150 hover:bg-adam-accent/20 disabled:opacity-50"
                     >
                       <Wallet className="h-3.5 w-3.5" />
                       {isAuthLoading ? 'Connecting…' : 'Connect Wallet'}
@@ -367,7 +452,7 @@ export function Sidebar({
                       <button
                         onClick={onConnect}
                         disabled={isAuthLoading}
-                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-adam-blue/25 bg-adam-blue/10 text-adam-blue transition-colors duration-150 hover:bg-adam-blue/20 disabled:opacity-50"
+                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-adam-accent/25 bg-adam-accent/10 text-adam-accent transition-colors duration-150 hover:bg-adam-accent/20 disabled:opacity-50"
                       >
                         <Wallet className="h-4 w-4" />
                       </button>

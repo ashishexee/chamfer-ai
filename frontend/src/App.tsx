@@ -47,9 +47,11 @@ export default function App() {
     store,
     refreshIterations,
   );
-  const { saveCurrentSession, handleLoadSession } = useChatSessions(store);
+  const { saveCurrentSession, handleLoadSession, renameSession } =
+    useChatSessions(store);
   const {
     handleGenerate,
+    handleStop,
     handleClarificationSubmit,
     handleEdit,
     handleEditSubmit,
@@ -90,6 +92,7 @@ export default function App() {
         sessions={store.chatSessions}
         activeSessionId={store.chatSessionId}
         onSelectSession={handleLoadSession}
+        onRenameSession={renameSession}
       />
 
       <div className="relative flex-1 overflow-auto bg-adam-bg-dark">
@@ -104,7 +107,7 @@ export default function App() {
               <LampContainer className="flex-1 min-h-0">
                 <div className="flex flex-col items-center justify-center flex-1 w-full min-h-0 px-4">
                   <h1 className="mb-6 text-center text-2xl font-semibold text-adam-text-primary md:text-3xl px-4 select-none">
-                    What Chamfer AI can do for you
+                    What <span className="text-adam-accent">Chamfer AI</span> can do for you
                   </h1>
                   <div className="w-full max-w-3xl">
                     <ChatInput
@@ -112,6 +115,7 @@ export default function App() {
                       prompt={store.prompt}
                       setPrompt={store.setPrompt}
                       onSubmit={() => handleGenerate()}
+                      onStop={handleStop}
                       isGenerating={store.isGenerating}
                       isFocused={store.isFocused}
                       setIsFocused={store.setIsFocused}
@@ -133,25 +137,12 @@ export default function App() {
                         key={s}
                         type="button"
                         onClick={() => store.setPrompt(s)}
-                        className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3.5 py-1.5 text-[12px] text-adam-text-secondary transition-colors duration-150 hover:bg-white/[0.06] hover:text-white"
+                        className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3.5 py-1.5 text-[12px] text-adam-text-secondary transition-colors duration-150 hover:border-adam-accent/30 hover:bg-adam-accent/[0.06] hover:text-white"
                       >
                         {s}
                       </button>
                     ))}
                   </div>
-                </div>
-                <div className="flex items-center px-5 py-7 md:py-9">
-                  <span className="text-sm md:text-base text-neutral-400 font-medium">
-                    Built on
-                  </span>
-                  <img
-                    src="/0g-logo-clean.png"
-                    alt="0G"
-                    className="w-20 h-20 md:w-20 md:h-20 object-contain"
-                  />
-                  <span className="text-sm md:text-base text-neutral-400 font-semibold">
-                    Compute & Storage
-                  </span>
                 </div>
               </LampContainer>
             ) : (
@@ -183,6 +174,7 @@ export default function App() {
                   <ChatPanel
                     store={store}
                     onGenerate={() => handleGenerate()}
+                    onStop={handleStop}
                     onClarificationSubmit={handleClarificationSubmit}
                     onEdit={handleEdit}
                     onEditSubmit={handleEditSubmit}
@@ -199,7 +191,7 @@ export default function App() {
                       togglePanel("chat", chatPanelRef);
                     }}
                     title={collapsed.chat ? "Show chat" : "Hide chat"}
-                    className="absolute top-1/2 left-full -translate-y-1/2 h-9 w-9 glass-hud rounded-lg flex items-center justify-center text-adam-text-secondary hover:text-adam-blue hover:bg-adam-blue/15 transition-colors pointer-events-auto cursor-pointer outline-none"
+                    className="absolute top-1/2 left-full -translate-y-1/2 h-9 w-9 glass-hud rounded-lg flex items-center justify-center text-adam-text-secondary hover:text-adam-accent hover:bg-adam-accent/15 transition-colors pointer-events-auto cursor-pointer outline-none"
                   >
                     <NutIcon
                       className="h-5 w-5"
@@ -228,6 +220,7 @@ export default function App() {
                     paramUpdateKey={store.paramUpdateKey}
                     isParamUpdating={store.isParamUpdating}
                     isCollapsed={collapsed.preview}
+                    isModelLoading={store.sessionLoading}
                     previewStlUrl={store.previewStlUrl}
                     previewLabel={
                       store.previewIteration
@@ -254,7 +247,7 @@ export default function App() {
                       togglePanel("right", rightPanelRef);
                     }}
                     title={collapsed.right ? "Show inspect" : "Hide inspect"}
-                    className="absolute top-1/2 left-0 -translate-x-full -translate-y-1/2 h-9 w-9 glass-hud rounded-lg flex items-center justify-center text-adam-text-secondary hover:text-adam-blue hover:bg-adam-blue/15 transition-colors pointer-events-auto cursor-pointer outline-none"
+                    className="absolute top-1/2 left-0 -translate-x-full -translate-y-1/2 h-9 w-9 glass-hud rounded-lg flex items-center justify-center text-adam-text-secondary hover:text-adam-accent hover:bg-adam-accent/15 transition-colors pointer-events-auto cursor-pointer outline-none"
                   >
                     <NutIcon
                       className="h-5 w-5"

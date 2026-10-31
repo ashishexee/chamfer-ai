@@ -52,6 +52,7 @@ export function useChatSessions(store: AppStore) {
     setPreviewLoadingId,
     setRewindTarget,
     setIterationError,
+    setSessionLoading,
     isGenerating,
     stlObjectUrl,
   } = store;
@@ -79,6 +80,7 @@ export function useChatSessions(store: AppStore) {
       if (messages.length > 0 && chatSessionId && auth.isConnected) {
         saveCurrentSession();
       }
+      setSessionLoading(true);
       try {
         const res = await fetch(`${API_URL}${CHAT_ENDPOINTS.HISTORY(sessionId)}`, {
           headers: { Authorization: `Bearer ${auth.address || ""}` },
@@ -219,6 +221,8 @@ export function useChatSessions(store: AppStore) {
         }
       } catch (err) {
         console.error("[LOAD] error:", err);
+      } finally {
+        setSessionLoading(false);
       }
     },
     [
@@ -230,6 +234,7 @@ export function useChatSessions(store: AppStore) {
       saveCurrentSession,
       setParamValues,
       stlObjectUrl,
+      setSessionLoading,
     ],
   );
 
@@ -258,5 +263,39 @@ export function useChatSessions(store: AppStore) {
     }).catch(() => {});
   }, [auth.isConnected, auth.address]);
 
-  return { saveCurrentSession, handleLoadSession };
+  /** Rename a chat optimistically; revert if the server rejects it. */
+  const renameSession = useCallback(
+    async (sessionId: string, title: string) => {
+      const clean = title.trim().replace(/\s+/g, " ").slice(0, 120);
+      if (!clean) return;
+
+      const previous = chatSessions;
+      setChatSessions((prev) =>
+        prev.map((session) =>
+          session.id === sessionId ? { ...session, title: clean } : session,
+        ),
+      );
+
+      try {
+        const res = await fetch(
+          `${API_URL}${CHAT_ENDPOINTS.RENAME(sessionId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ title: clean }),
+          },
+        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `Rename failed (${res.status})`);
+        }
+      } catch (err) {
+        console.error("[RENAME]", err);
+        setChatSessions(previous);
+      }
+    },
+    [chatSessions, authHeaders, setChatSessions],
+  );
+
+  return { saveCurrentSession, handleLoadSession, renameSession };
 }

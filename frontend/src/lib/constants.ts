@@ -6,6 +6,7 @@ export const API_URL = import.meta.env.VITE_API_URL || '';
 export const CHAT_ENDPOINTS = {
   SAVE: '/api/chat/save',
   SESSIONS: '/api/chat/sessions',
+  RENAME: (sessionId: string) => `/api/chat/sessions/${sessionId}`,
   HISTORY: (sessionId: string) => `/api/chat/history/${sessionId}`,
 } as const;
 
