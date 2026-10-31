@@ -19,6 +19,40 @@ function reasoningParams(
   return effort ? { reasoning_effort: effort } : {};
 }
 
+const EFFORT_LADDER: ReasoningEffort[] = ['max', 'xhigh', 'high', 'medium', 'low', 'minimal'];
+
+/** Next lower reasoning level, or undefined when the model has no lower gear. */
+export function lowerReasoningEffort(effort?: ReasoningEffort): ReasoningEffort | undefined {
+  if (!effort) return undefined;
+  const idx = EFFORT_LADDER.indexOf(effort);
+  return idx >= 0 && idx < EFFORT_LADDER.length - 1 ? EFFORT_LADDER[idx + 1] : undefined;
+}
+
+/** A 400/422 that names reasoning_effort means the model rejects that level. */
+export function isEffortRejection(err: any, effort?: ReasoningEffort): boolean {
+  if (!effort) return false;
+  const status = err?.status ?? err?.response?.status;
+  const message = String(err?.message ?? '');
+  const param = String(err?.param ?? err?.error?.param ?? '');
+  return (
+    (status === 400 || status === 422) &&
+    (/effort/i.test(message) || /reasoning_effort/i.test(message) || param === 'reasoning_effort')
+  );
+}
+
+/** A provider that doesn't understand max_tokens (or wants max_completion_tokens). */
+export function isMaxTokensRejection(err: any): boolean {
+  const status = err?.status ?? err?.response?.status;
+  const message = String(err?.message ?? '');
+  const param = String(err?.param ?? err?.error?.param ?? '');
+  return (
+    (status === 400 || status === 422) &&
+    (/max_(completion_)?tokens/i.test(message) ||
+      param === 'max_tokens' ||
+      param === 'max_completion_tokens')
+  );
+}
+
 /** Streaming errors that must NOT be retried — the provider is wedged/dead. */
 class FatalStreamError extends Error {}
 
@@ -242,35 +276,140 @@ export interface ASTCheckResult {
   error?: string;
 }
 
+/** Shape the Python checker prints as JSON. */
+interface PythonSyntaxErrorPayload {
+  valid: boolean;
+  msg?: string | null;
+  line?: number | null;
+  offset?: number | null;
+  text?: string | null;
+}
+
+/**
+ * Turn a Python SyntaxError into the detail a model can actually act on:
+ * the parser message, the line/column, the offending source line and a caret.
+ *
+ * The old checker only kept the text after "SyntaxError:", which reduced a
+ * real failure to "invalid syntax" (or worse, a bare traceback header) and
+ * made the retry prompt useless.
+ */
+export function formatPythonSyntaxError(input: {
+  msg?: string | null;
+  line?: number | null;
+  offset?: number | null;
+  text?: string | null;
+}): string {
+  const msg = (input.msg || 'Invalid Python syntax').trim();
+  const line = typeof input.line === 'number' && input.line > 0 ? input.line : undefined;
+  const offset = typeof input.offset === 'number' && input.offset > 0 ? input.offset : undefined;
+
+  if (!line) return `Python SyntaxError: ${msg}`;
+
+  const where = offset ? `Line ${line}, column ${offset}:` : `Line ${line}:`;
+  const header = `Python SyntaxError: ${msg}\n${where}`;
+  if (!input.text) return header;
+
+  const sourceLine = input.text.replace(/\r?\n$/, '').replace(/\t/g, '    ');
+  const column = Math.max(1, Math.min(offset ?? 1, sourceLine.length + 1));
+  // Expand tabs before measuring so the caret lines up with the printed source.
+  const caretPad = sourceLine.slice(0, column - 1).length;
+  const lineLabel = String(line).padStart(4, ' ');
+  const blank = ' '.repeat(lineLabel.length);
+
+  return `${header}\n\n${lineLabel} | ${sourceLine}\n${blank} | ${' '.repeat(caretPad)}^`;
+}
+
 export async function fastSyntaxCheck(code: string): Promise<ASTCheckResult> {
   return new Promise((resolve) => {
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-    const escapedCode = code.replace(/'''/g, "\\'''").replace(/\\/g, '\\\\');
-    const python = spawn(pythonCmd, ['-c', `import ast; ast.parse('''${escapedCode}''')`], {
-      timeout: 5000,
-    });
-    
+    // Read the code from stdin instead of embedding it in a `-c` string.
+    // The old wrapper broke on triple-quoted strings, doubled every backslash,
+    // and hit Windows' ~32K command-line limit on large scripts — all of which
+    // surfaced as bogus syntax errors. stdin has none of those limits.
+    const script = `import ast, json, sys
+src = sys.stdin.read()
+try:
+    ast.parse(src)
+    sys.stdout.write(json.dumps({"valid": True}))
+except SyntaxError as e:
+    sys.stdout.write(json.dumps({
+        "valid": False,
+        "msg": e.msg,
+        "line": e.lineno,
+        "offset": e.offset,
+        "text": e.text,
+    }))
+    sys.exit(1)
+except Exception as e:
+    sys.stdout.write(json.dumps({
+        "valid": False,
+        "msg": str(e),
+        "line": None,
+        "offset": None,
+        "text": None,
+    }))
+    sys.exit(1)
+`;
+    const python = spawn(pythonCmd, ['-I', '-c', script], { windowsHide: true });
+
+    let stdout = '';
     let stderr = '';
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+    const finish = (result: ASTCheckResult) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(result);
+    };
+
+    timer = setTimeout(() => {
+      try { python.kill(); } catch { /* already gone */ }
+      finish({ valid: false, error: 'Python syntax check timed out after 8s.' });
+    }, 8000);
+    timer.unref?.();
+
+    python.stdout.on('data', (data) => { stdout += data.toString(); });
     python.stderr.on('data', (data) => { stderr += data.toString(); });
-    
-    python.on('close', (code) => {
-      if (code === 0) {
-        resolve({ valid: true });
+    // A killed/failed child can close stdin while we are still writing.
+    python.stdin.on('error', () => { /* surfaced via close/error below */ });
+
+    python.on('close', (exitCode) => {
+      const raw = stdout.trim();
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as PythonSyntaxErrorPayload;
+          if (parsed.valid) {
+            finish({ valid: true });
+          } else {
+            finish({ valid: false, error: formatPythonSyntaxError(parsed) });
+          }
+          return;
+        } catch {
+          // Fall through to the infrastructure-error path below.
+        }
+      }
+
+      // No JSON: Python itself never ran the parser (missing module, crash).
+      // Do not dress this up as a code syntax error — say what actually failed.
+      if (exitCode === 0) {
+        finish({ valid: true });
       } else {
-        const errorMatch = stderr.match(/SyntaxError:\s*(.*)/);
-        const errorMsg = errorMatch ? errorMatch[1] : (stderr.slice(0, 200) || 'Unknown syntax error');
-        resolve({ valid: false, error: `Syntax error: ${errorMsg}` });
+        const detail = (stderr.trim() || raw || `Python exited with code ${exitCode}`).slice(0, 2000);
+        finish({ valid: false, error: `Python syntax checker failed (not a code error):\n${detail}` });
       }
     });
-    
+
     python.on('error', (err) => {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         console.warn('[AST] Python not found — skipping syntax check (Docker will catch errors)');
-        resolve({ valid: true });
+        finish({ valid: true });
       } else {
-        resolve({ valid: false, error: `Failed to run Python AST check: ${err.message}` });
+        finish({ valid: false, error: `Failed to run Python AST check: ${err.message}` });
       }
     });
+
+    python.stdin.end(code, 'utf8');
   });
 }
 
@@ -377,11 +516,14 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     },
   },
   {
-    patterns: ['syntaxerror', 'indentationerror'],
+    patterns: [
+      'syntaxerror', 'syntax error', 'indentationerror', 'indentation error',
+      'taberror', 'unexpected indent', 'expected an indented block',
+    ],
     failure: {
       category: 'SYNTAX',
       priority: 'medium',
-      hint: 'Python syntax error. Check indentation, colons, parentheses, and quotes.',
+      hint: 'Fix the Python syntax exactly where the parser reports it. Balance every parenthesis/bracket/brace, close every quote, and check the indentation of the reported block.',
     },
   },
   {
@@ -543,13 +685,26 @@ export interface LLMResult {
   code: string;
   rawResponse: string;
   reasoning: string;
+  /** Effort actually used — may be lower than requested after a provider rejection. */
+  reasoningEffort?: ReasoningEffort;
   parameters: Record<string, ParameterSchema>;
   description: string;
   tags: string[];
   zeroG?: ZeroGMetadata;
 }
 
+export interface PhaseProgress {
+  stage: 'generate' | 'context' | 'truncated';
+  attempt: number;
+  maxAttempts: number;
+  tokenBudget?: number;
+  effort?: ReasoningEffort;
+  detail?: string;
+}
+
 export interface StreamCallbacks {
+  /** Progress inside the multi-attempt code loop (does not reveal chain-of-thought). */
+  onPhase?: (progress: PhaseProgress) => void;
   onReasoning: (chunk: string) => void;
   onContent: (chunk: string) => void;
   onDone: (result: LLMResult) => void;
@@ -583,7 +738,15 @@ export async function generateCadQueryCodeStream(
   const provider = config.providers[providerId || '0g'] || config.providers['0g'];
   const llm = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseUrl, fetchOptions: { dispatcher: getProviderDispatcher() } });
   const isZeroG = provider.isZeroG === true;
-  const maxPhases = 3;
+
+  // Code attempts are the real budget. Context loads and truncation retries are
+  // free: a complex prompt can pull every reference it needs and can re-run the
+  // same attempt with a bigger output budget before it costs an attempt.
+  const MAX_CODE_ATTEMPTS = 5;
+  const MAX_MODEL_CALLS = 60;
+  const tokenCeiling = Math.min(provider.maxTokens ?? 32768, 131072);
+  const baseTokenBudget = Math.min(32768, tokenCeiling);
+  let baseEffort = reasoningEffort ?? provider.reasoningEffort;
 
   // Preloaded references — SKILL.md promises cadquery-api.md is ALWAYS present
   // and error-recovery.md is added automatically on repair attempts. Starting
@@ -600,11 +763,31 @@ export async function generateCadQueryCodeStream(
   // Same-phase retries for prematurely-terminated streams. Meta-class endpoints
   // sometimes drop a stream mid-response; retrying the SAME phase after a short
   // backoff is cheaper (and fairer) than burning a context-request phase slot.
-  let streamRetryAttempt = 0;
+  let codeAttempts = 0;
+  let contextLoads = 0;
+  let modelCalls = 0;
+  let tokenBudget = baseTokenBudget;
+  let effort = baseEffort;
+  let lengthRetries = 0;
+  let stalledContextRequests = 0;
+  let lastExtractError = '';
+  let lastFinishReason: string | null = null;
+  // Some OpenAI-compatible endpoints reject the field (they want
+  // max_completion_tokens); retry without a cap rather than fail the attempt.
+  let maxTokensParamSupported = true;
 
   phaseLoop:
-  for (let phase = 1; phase <= maxPhases; phase++) {
-    console.log(`[LLM] Phase ${phase}/${maxPhases} (refs loaded: ${loadedFiles.length})`);
+  while (codeAttempts < MAX_CODE_ATTEMPTS && modelCalls < MAX_MODEL_CALLS) {
+    modelCalls += 1;
+    const attemptNumber = codeAttempts + 1;
+    console.log(`[LLM] Code attempt ${attemptNumber}/${MAX_CODE_ATTEMPTS} (refs ${loadedFiles.length}, context ${contextLoads}, budget ${tokenBudget})`);
+    callbacks?.onPhase?.({
+      stage: 'generate',
+      attempt: attemptNumber,
+      maxAttempts: MAX_CODE_ATTEMPTS,
+      tokenBudget,
+      effort,
+    });
     // Build system prompt: SKILL.md + all loaded references
     const systemPrompt = buildPromptWithRefs(loadedFiles);
     
@@ -641,30 +824,34 @@ ${messageContent}`;
       }
     }
 
+    const currentUserMessage = images && images.length > 0
+      ? {
+          role: 'user' as const,
+          content: buildVisionContent(prompt + noNewFilesNudge, images),
+        }
+      : { role: 'user' as const, content: prompt + noNewFilesNudge };
+
     if (previousCode && errorFeedback) {
+      // Order matters on repair turns: the original request first, then the
+      // model's failed output, then the repair instruction LAST. The last user
+      // turn is the operative instruction; putting the original prompt after
+      // the error made models regenerate from scratch and repeat the mistake.
+      messages.push(currentUserMessage);
       messages.push({ role: 'assistant', content: JSON.stringify({ code: previousCode }) });
       messages.push({ role: 'user', content: errorFeedback });
-    }
-
-    // Add current user message
-    if (images && images.length > 0) {
-      messages.push({
-        role: 'user',
-        content: buildVisionContent(prompt + noNewFilesNudge, images),
-      });
     } else {
-      messages.push({ role: 'user', content: prompt + noNewFilesNudge });
+      messages.push(currentUserMessage);
     }
 
     // Log token counts
-    logTokenCounts(messages, `generate-phase${phase}-${providerId || '0g'}`);
+    logTokenCounts(messages, `generate-attempt${attemptNumber}-ctx${contextLoads}-${providerId || '0g'}`);
     
-    console.log(`[LLM] Provider: ${providerId || '0g'}, Model: ${provider.model}, Phase: ${phase}, Loaded files: ${loadedFiles.length}`);
+    console.log(`[LLM] Provider: ${providerId || '0g'}, Model: ${provider.model}, attempt: ${attemptNumber}, context: ${contextLoads}, max_tokens: ${tokenBudget}, effort: ${effort ?? 'default'}`);
 
     let fullContent = '';
     let fullReasoning = '';
     let lastChunk: any = null;
-    streamRetryAttempt = 0;
+    let streamRetryAttempt = 0;
 
     try {
     // Abort if the provider never sends a first chunk (wedged endpoint), but
@@ -680,8 +867,9 @@ ${messageContent}`;
         const stream = await llm.chat.completions.create({
           model: provider.model,
           messages,
-          ...(isZeroG ? { max_tokens: 32768, verify_tee: true } : {}),
-          ...reasoningParams(provider, reasoningEffort),
+          ...(maxTokensParamSupported ? { max_tokens: tokenBudget } : {}),
+          ...(isZeroG ? { verify_tee: true } : {}),
+          ...reasoningParams(provider, effort),
           temperature: 0.2,
           stream: true,
         } as any, { signal: watchdog.signal });
@@ -721,6 +909,35 @@ ${messageContent}`;
         if (isProviderTimeout(streamErr)) {
           throw new FatalStreamError('Provider connection timed out (idle) — try a lower reasoning level or another model.');
         }
+        // If the endpoint rejects max_tokens, drop the cap and retry the same
+        // call; the provider's own default then applies.
+        if (maxTokensParamSupported && isMaxTokensRejection(streamErr)) {
+          console.warn('[LLM] Provider rejected max_tokens; retrying without an explicit cap');
+          maxTokensParamSupported = false;
+          continue;
+        }
+
+        // Some models advertise a level they actually reject (e.g. Muse
+        // contributor + max). Drop one rung and retry instead of burning code
+        // attempts on a 400.
+        if (isEffortRejection(streamErr, effort)) {
+          const lowered = lowerReasoningEffort(effort);
+          if (lowered) {
+            console.error(`[LLM] Provider rejected reasoning_effort=${effort}; retrying at ${lowered}`);
+            callbacks?.onPhase?.({
+              stage: 'truncated',
+              attempt: attemptNumber,
+              maxAttempts: MAX_CODE_ATTEMPTS,
+              detail: `Provider rejected reasoning effort ${effort} — retrying at ${lowered}`,
+              tokenBudget,
+              effort: lowered,
+            });
+            baseEffort = lowered;
+            effort = lowered;
+            continue;
+          }
+        }
+
         const terminated =
           streamErr?.message === 'terminated' || streamErr?.code === 'ECONNRESET' || streamErr?.type === 'aborted';
         if (terminated) {
@@ -730,22 +947,83 @@ ${messageContent}`;
             await new Promise((r) => setTimeout(r, 3000 * streamRetryAttempt));
             continue;
           }
-          console.error('[LLM] Stream terminated prematurely — same-phase budget exhausted, advancing phase');
+          console.error('[LLM] Stream terminated prematurely — same-attempt budget exhausted');
+          lastExtractError = 'provider terminated the stream repeatedly';
+          codeAttempts += 1;
+          tokenBudget = baseTokenBudget;
+          effort = baseEffort;
+          lengthRetries = 0;
           continue phaseLoop;
         }
         throw streamErr; // genuine API errors: surface to the outer catch
       }
     }
 
-    // Extract JSON from the complete response
-    console.log(`[LLM] Raw response (${fullContent.length} chars): ${fullContent.slice(0, 500)}...`);
-    const { data, error: extractError } = extractJSONFromResponse(fullContent);
-    
+    const finishReason = (lastChunk as any)?.choices?.[0]?.finish_reason ?? null;
+    lastFinishReason = finishReason;
+
+    // Extract JSON from the complete response. Meta-class endpoints sometimes
+    // place the entire answer under reasoning_content; fall back to it.
+    console.log(`[LLM] Raw response (${fullContent.length} chars, reasoning ${fullReasoning.length} chars, finish ${finishReason || 'none'})`);
+    const primary = extractJSONFromResponse(fullContent);
+    let data = primary.data;
+    let extractError = primary.error;
+    if (!data && fullReasoning.trim().length > 0) {
+      const fallback = extractJSONFromResponse(fullReasoning);
+      if (fallback.data) {
+        data = fallback.data;
+        extractError = null;
+        console.log('[LLM] JSON recovered from reasoning_content');
+      } else {
+        extractError = `${primary.error} | reasoning fallback: ${fallback.error}`;
+      }
+    }
+
     if (!data) {
-      console.error(`[LLM] JSON extraction failed: ${extractError}`);
-      console.error(`[LLM] Full raw response: ${fullContent}`);
-      // On extraction failure, try to continue to next phase
-      continue;
+      lastExtractError = extractError || 'no JSON returned';
+      console.error(`[LLM] JSON extraction failed (finish=${finishReason}, content=${fullContent.length}, reasoning=${fullReasoning.length}): ${lastExtractError}`);
+
+      // Truncation does not consume an attempt: retry the SAME attempt with a
+      // larger output budget, then with a lower reasoning effort.
+      if (finishReason === 'length' && lengthRetries < 3) {
+        if (tokenBudget < tokenCeiling) {
+          const next = Math.min(tokenBudget * 2, tokenCeiling);
+          callbacks?.onPhase?.({
+            stage: 'truncated',
+            attempt: attemptNumber,
+            maxAttempts: MAX_CODE_ATTEMPTS,
+            detail: `Output truncated — raising max_tokens from ${tokenBudget} to ${next}`,
+            tokenBudget: next,
+            effort,
+          });
+          console.log(`[LLM] Output truncated; retrying same attempt with max_tokens ${next}`);
+          tokenBudget = next;
+          lengthRetries += 1;
+          continue phaseLoop;
+        }
+        const lowered = lowerReasoningEffort(effort);
+        if (lowered) {
+          callbacks?.onPhase?.({
+            stage: 'truncated',
+            attempt: attemptNumber,
+            maxAttempts: MAX_CODE_ATTEMPTS,
+            detail: `Output truncated — lowering reasoning effort from ${effort} to ${lowered}`,
+            tokenBudget,
+            effort: lowered,
+          });
+          console.log(`[LLM] Output truncated; lowering effort ${effort} -> ${lowered}`);
+          baseEffort = lowered;
+          effort = lowered;
+          lengthRetries += 1;
+          continue phaseLoop;
+        }
+      }
+
+      codeAttempts += 1;
+      tokenBudget = baseTokenBudget;
+      effort = baseEffort;
+      lengthRetries = 0;
+      continue phaseLoop;
     }
 
     console.log(`[LLM] Stream done. Content: ${fullContent.length} chars, Reasoning: ${fullReasoning.length} chars`);
@@ -758,20 +1036,48 @@ ${messageContent}`;
         .filter(f => !loadedFiles.includes(f));
 
       if (newFiles.length === 0) {
-        console.error(`[LLM] Context request but no new files available: ${contextNeeded.join(', ')} — nudging to generate`);
-        // Re-running with identical context would likely reproduce the same
-        // request; tell the model explicitly to produce code instead.
+        stalledContextRequests += 1;
+        console.error(`[LLM] Context request but no new files available: ${contextNeeded.join(', ')} — nudge ${stalledContextRequests}/3`);
+        if (stalledContextRequests >= 3) {
+          lastExtractError = 'model repeatedly requested context that is already loaded';
+          codeAttempts += 1;
+          tokenBudget = baseTokenBudget;
+          effort = baseEffort;
+          lengthRetries = 0;
+          continue phaseLoop;
+        }
         noNewFilesNudge = '\n\n[SYSTEM NOTE: All relevant reference files are already loaded — no additional context is available. Do not request more files. Output the complete JSON object with your CadQuery code now.]';
-        continue;
+        continue phaseLoop;
       }
 
-      // Cache loaded files
+      // Cache loaded files; context loads do not consume a code attempt.
       loadedFiles.push(...newFiles);
-      console.log(`[LLM] Phase ${phase}: Loaded ${newFiles.join(', ')}`);
-      
-      // Emit content about loading
+      contextLoads += 1;
+      stalledContextRequests = 0;
+      noNewFilesNudge = '';
+      console.log(`[LLM] Attempt ${attemptNumber}: loaded ${newFiles.join(', ')} (context load ${contextLoads})`);
       callbacks?.onContent?.(`[Loading context: ${newFiles.join(', ')}]`);
-      continue; // Next phase
+      callbacks?.onPhase?.({
+        stage: 'context',
+        attempt: attemptNumber,
+        maxAttempts: MAX_CODE_ATTEMPTS,
+        detail: newFiles.join(', '),
+        tokenBudget,
+        effort,
+      });
+      continue phaseLoop; // same code attempt
+    }
+
+    // A valid JSON object with neither code nor a context request is still a
+    // failed attempt (prevents a null deref on data.code).
+    if (!data.code) {
+      lastExtractError = (data as any).reason || 'model returned neither code nor a context request';
+      console.error(`[LLM] No code in response: ${lastExtractError}`);
+      codeAttempts += 1;
+      tokenBudget = baseTokenBudget;
+      effort = baseEffort;
+      lengthRetries = 0;
+      continue phaseLoop;
     }
 
     // Code generated — return result
@@ -838,6 +1144,7 @@ ${messageContent}`;
       code: data.code,
       rawResponse: fullContent,
       reasoning: fullReasoning,
+      reasoningEffort: effort,
       parameters: data.parameters,
       description: data.description,
       tags: data.tags,
@@ -856,13 +1163,24 @@ ${messageContent}`;
       const errorMsg = `${err.constructor?.name}: ${err.message}`;
       console.error(`[LLM] ERROR: ${errorMsg}`);
       callbacks?.onError(errorMsg);
-      // Genuine (non-fatal) errors: advance to the next phase.
+      lastExtractError = errorMsg;
+      // A genuine API error still consumes a code attempt.
+      codeAttempts += 1;
+      tokenBudget = baseTokenBudget;
+      effort = baseEffort;
+      lengthRetries = 0;
       continue phaseLoop;
     }
   } // End of phase loop
 
-  // If we exhaust all phases without generating code, throw error
-  throw new Error('Failed to generate code after maximum phases');
+  // If we exhaust all code attempts without generating code, throw a
+  // diagnostic error instead of a generic one.
+  throw new Error(
+    `Failed to generate code after ${codeAttempts} code attempts ` +
+    `(${contextLoads} context loads, ${modelCalls} model calls). ` +
+    `Last finish: ${lastFinishReason ?? 'unknown'}. ` +
+    `Last error: ${lastExtractError || 'no code returned'}`,
+  );
 }
 
 // ─── Visual Inspection (Vision-Capable Models Only) ──────────────────

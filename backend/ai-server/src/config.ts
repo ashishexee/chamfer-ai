@@ -69,7 +69,7 @@ export const config = {
       name: 'DeepSeek V4.1 Flash',
       apiKey: process.env.OG_API_KEY || '',
       supportsVision: true,
-      maxTokens: 384000,
+      maxTokens: 393216,
       maxContextTokens: 1000000,
       isZeroG: true,
     },
@@ -89,6 +89,8 @@ export const config = {
       supportsVision: true,
       maxTokens: 131072,
       maxContextTokens: 1048576,
+      // Contributor tier accepts minimal…xhigh; the max level may return 400,
+      // in which case the generation loop retries one rung lower.
       reasoningEfforts: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
       reasoningEffort: 'max',
     },
@@ -182,13 +184,17 @@ export const config = {
       maxContextTokens: 262144,
     },
     */
+    // Groq retired qwen/qwen3-32b and llama-4-scout on 2026-07-17. These ids now
+    // error unless the account is on a committed-spend contract; keep the block
+    // for enterprise deployments, but don't advertise dead models by default.
+    /*
     'groq': {
       baseUrl: 'https://api.groq.com/openai/v1',
       model: 'qwen/qwen3-32b',
       name: 'Qwen3-32B',
       apiKey: process.env.GROQ_API_KEY || '',
       supportsVision: false,
-      maxTokens: 32768,
+      maxTokens: 40960,
       maxContextTokens: 131072,
     },
     'groq-vision': {
@@ -197,8 +203,9 @@ export const config = {
       name: 'Llama 4 Scout',
       apiKey: process.env.GROQ_API_KEY || '',
       supportsVision: true,
-      maxTokens: 16384,
+      maxTokens: 8192,
       maxContextTokens: 131072,
     },
+    */
   } as Record<string, ProviderConfig>,
 };

@@ -8,6 +8,8 @@ import {
   inspectWithVision,
   checkClarification,
   type ParameterSchema,
+  type PhaseProgress,
+  type StreamCallbacks,
 } from '../services/llm';
 import { config, type ReasoningEffort } from '../config';
 import { RETRY_TEMPLATE } from '../lib/loader';
@@ -56,6 +58,25 @@ function buildTargetedRetry(feedback: string, code: string): string {
     ? `\n\nThe code from the previous attempt:\n\n\`\`\`python\n${code}\n\`\`\`\n`
     : '';
   return `${feedback}${codeBlock}\nFix ONLY what is broken — the smallest change possible. Return ONLY a JSON object with keys "code", "parameters", "description", "tags". No thinking text. Start with '{' and end with '}'.`;
+}
+
+/**
+ * Syntax failures are mechanical: the parser has already reported the exact
+ * line, column and grammar problem. Say that plainly, include the complete
+ * script, and forbid a redesign — otherwise the model rewrites the model and
+ * repeats the same typo.
+ */
+function buildSyntaxRetry(feedback: string, code: string): string {
+  const codeBlock = code && code.length > 0
+    ? `\n\nThe complete script that failed:\n\n\`\`\`python\n${code}\n\`\`\`\n`
+    : '';
+  return `The previous CadQuery script was rejected by Python's parser BEFORE it ran.
+
+${feedback}
+${codeBlock}
+Fix ONLY the reported syntax error. Re-check every parenthesis, bracket and brace, every quote, and the indentation at the reported line. Keep the design, parameters and structure unchanged.
+
+Return ONLY a JSON object with keys "code", "parameters", "description", "tags". No markdown fences around the JSON, no thinking text, no explanations. Start with '{' and end with '}'.`;
 }
 
 interface CadResult {
@@ -295,7 +316,12 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
     // leave the code-attempt counter untouched.
     let errorFeedback: string | undefined;
     if (lastError) {
-      if (TARGETED_RETRY_CATEGORIES.has(lastErrorCategory)) {
+      if (lastErrorCategory === 'SYNTAX') {
+        // The AST checker already produced a line/column/caret diagnostic.
+        // Bypass classifyError so it is never downgraded to a generic hint.
+        errorFeedback = buildSyntaxRetry(lastError, code);
+        console.log(`[ROUTE] Retry ${attempt}: SYNTAX (parser detail)`);
+      } else if (TARGETED_RETRY_CATEGORIES.has(lastErrorCategory)) {
         // Vision verdicts / geometry diagnostics / no-code notices already
         // contain targeted instructions — pass them through with the code
         // instead of re-classifying into the generic template.
@@ -317,6 +343,33 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
     }
 
     try {
+      // Phase progress is available on every route retry — not just the first
+      // attempt — so the analyze step never sits frozen through a long loop.
+      const phaseCallbacks: StreamCallbacks = {
+        onPhase: (progress: PhaseProgress) => {
+          const phase = `Phase ${progress.attempt}/${progress.maxAttempts}`;
+          if (progress.stage === 'context') {
+            step(
+              'analyze', 'search', 'Loading references',
+              `${phase} · ${progress.detail ?? 'additional context'}`,
+              'running',
+            );
+          } else {
+            step(
+              'analyze', 'code', 'Generating code',
+              progress.stage === 'truncated'
+                ? `${phase} · ${progress.detail ?? 'retrying truncated output'}`
+                : phase,
+              'running',
+            );
+          }
+        },
+        onReasoning: () => {},
+        onContent: () => {},
+        onDone: () => {},
+        onError: () => {},
+      };
+
       const result = await generateCadQueryCodeStream({
         prompt: effectivePrompt,
         images,
@@ -327,6 +380,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         providerId,
         reasoningEffort: reasoningOverride,
         callbacks: !lastError ? {
+          ...phaseCallbacks,
           onReasoning: (chunk) => sendSSE(res, 'reasoning', { chunk }),
           onContent: () => {},
           onDone: (r) => sendSSE(res, 'llm-done', { codeLength: r.code.length }),
@@ -342,7 +396,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
               'Cryptographically checking the response against the provider\'s on-chain TEE identity',
             );
           },
-        } : undefined,
+        } : phaseCallbacks,
       });
 
       code = result.code;
@@ -352,9 +406,14 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       rawResponse = result.rawResponse;
       reasoning = result.reasoning;
 
-      if (!lastError) {
-        stepDone('analyze', 'Identified the requested geometry type and parameters');
-      }
+      // Close the analyze step on every successful attempt, including retries —
+      // otherwise the phase-progress detail would stay "Running" forever.
+      stepDone(
+        'analyze',
+        lastError
+          ? 'Recovered after a retry with the previous error as context'
+          : 'Identified the requested geometry type and parameters',
+      );
 
       // Reflect the TEE verification outcome IMMEDIATELY — the check already ran
       // to completion inside the LLM call, so resolving it here (not at the end
@@ -388,15 +447,34 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       step('syntax', 'shield-check', 'Checking syntax', 'Validating Python code before execution');
       const astResult = await fastSyntaxCheck(code);
       if (!astResult.valid) {
-        lastError = astResult.error || 'Syntax check failed';
-        lastErrorCategory = 'SYNTAX';
-        stepError('syntax', lastError.slice(0, 100));
-        console.log(`[ROUTE] AST check failed: ${lastError.slice(0, 120)}`);
-        sendSSE(res, 'retry', { reason: lastError, category: 'SYNTAX', hint: 'Fix Python syntax error.', attempt: attempt + 1 });
-        attempt++;
-        continue;
+        const syntaxDetail = astResult.error || 'Syntax check failed';
+        // A broken/missing checker is an infrastructure problem, not a defect
+        // in the model's code. Do not burn a repair attempt (or tell the model
+        // to "fix syntax") — hand the code to the sandbox, which validates it.
+        const checkerUnavailable = /^(Python syntax checker failed|Failed to run Python AST check|Python syntax check timed out)/.test(syntaxDetail);
+        if (checkerUnavailable) {
+          console.warn(`[ROUTE] AST checker unavailable: ${syntaxDetail.replace(/\n/g, ' | ').slice(0, 300)}`);
+          stepDone('syntax', 'AST checker unavailable — the sandbox will validate instead');
+        } else {
+          lastError = syntaxDetail;
+          lastErrorCategory = 'SYNTAX';
+          // Keep the whole line/column/caret diagnostic. The timeline is
+          // collapsed by default, so show it in full when the user expands
+          // the failed step.
+          stepError('syntax', lastError.slice(0, 1000));
+          console.log(`[ROUTE] AST check failed: ${lastError.replace(/\n/g, ' | ').slice(0, 400)}`);
+          sendSSE(res, 'retry', {
+            reason: lastError,
+            category: 'SYNTAX',
+            hint: 'Fix the Python syntax at the reported line and column.',
+            attempt: attempt + 1,
+          });
+          attempt++;
+          continue;
+        }
+      } else {
+        stepDone('syntax', 'Python syntax is valid');
       }
-      stepDone('syntax', 'Python syntax is valid');
 
       // ── Execute on CAD server ──
       const wantSvgSnapshots = attempt === 0 || attempt === MAX_RETRIES - 1;
@@ -580,6 +658,7 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
         message: rawResponse,
         reasoning,
         provider: providerId,
+        reasoningEffort: result.reasoningEffort,
         hasStl: cadResult.has_stl,
         hasStep: cadResult.has_step,
         hasGlb: cadResult.has_glb,
@@ -669,7 +748,9 @@ export async function handleGenerate(req: Request, res: Response): Promise<void>
       reasoning,
       provider: providerId,
       bestEffort: true,
-      warning: `Model generated but had issues after ${MAX_RETRIES} attempts. Last error category: ${lastErrorCategory}.`,
+      warning: lastErrorCategory === 'SYNTAX'
+        ? `The generated code still has a Python syntax error after ${MAX_RETRIES} attempts: ${lastError.replace(/\s+/g, ' ').slice(0, 300)}`
+        : `Model generated but had issues after ${MAX_RETRIES} attempts. Last error category: ${lastErrorCategory}.`,
       ...bestEffortData,
     });
   } else {
