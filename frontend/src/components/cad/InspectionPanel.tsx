@@ -96,7 +96,7 @@ export function InspectionPanel({ inspection }: InspectionPanelProps) {
       {hasVision && (
         <div className="space-y-1.5">
           {visionChecking && (
-            <div className="flex items-center gap-1.5 rounded-md bg-adam-blue/[0.07] px-2.5 py-1.5 text-[10px] text-adam-blue ring-1 ring-adam-blue/10">
+            <div className="flex items-center gap-1.5 rounded-md bg-adam-accent/[0.07] px-2.5 py-1.5 text-[10px] text-adam-accent ring-1 ring-adam-accent/10">
               <Eye className="h-3 w-3 animate-pulse" />
               <span>Visually inspecting rendered model...</span>
             </div>

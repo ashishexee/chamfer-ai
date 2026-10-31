@@ -27,7 +27,7 @@ export function SnapshotGallery({ snapshots }: SnapshotGalleryProps) {
           <button
             key={view}
             onClick={() => setSelected(view)}
-            className="relative group rounded-lg overflow-hidden border border-adam-neutral-700 bg-adam-bg-dark hover:border-adam-blue transition-colors"
+            className="relative group rounded-lg overflow-hidden border border-adam-neutral-700 bg-adam-bg-dark hover:border-adam-accent transition-colors"
           >
             <div
               className="w-full h-20 flex items-center justify-center"

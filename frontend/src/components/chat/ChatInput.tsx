@@ -1,4 +1,4 @@
-import { ArrowUp, ImagePlus, Maximize2, Minimize2, X } from 'lucide-react';
+import { ArrowUp, ImagePlus, Square, X } from 'lucide-react';
 import { useState, useRef, useCallback, useLayoutEffect } from 'react';
 import { AnimatedPlaceholder } from './AnimatedPlaceholder';
 import { ProviderSelector } from '@/components/layout/ProviderSelector';
@@ -31,6 +31,7 @@ interface ChatInputProps {
   prompt: string;
   setPrompt: (v: string) => void;
   onSubmit: () => void;
+  onStop: () => void;
   isGenerating: boolean;
   isFocused: boolean;
   setIsFocused: (v: boolean) => void;
@@ -54,7 +55,7 @@ interface ChatInputProps {
  * without a manual height it auto-grows with content.
  */
 export function ChatInput({
-  prompt, setPrompt, onSubmit, isGenerating, isFocused, setIsFocused,
+  prompt, setPrompt, onSubmit, onStop, isGenerating, isFocused, setIsFocused,
   provider, setProvider, placeholder, reasoningEffort, setReasoningEffort,
   showAnimatedPlaceholder, images, onImagesChange,
   providerSupportsVision, isConnected = true, hero = false,
@@ -67,7 +68,6 @@ export function ChatInput({
   const [manualHeight, setManualHeight] = useState<number | null>(() => readStoredHeight(heightKey));
 
   const minHeight = hero ? MIN_HERO_HEIGHT : MIN_CHAT_HEIGHT;
-  const isExpanded = manualHeight !== null;
 
   // Manual height wins; otherwise auto-grow from the content, capped.
   useLayoutEffect(() => {
@@ -86,14 +86,6 @@ export function ChatInput({
     el.style.height = `${Math.min(Math.max(content, minHeight), max)}px`;
     el.style.overflowY = content > max ? 'auto' : 'hidden';
   }, [prompt, manualHeight, minHeight, hero]);
-
-  const toggleExpanded = useCallback(() => {
-    setManualHeight((current) => {
-      const next = current === null ? (hero ? 220 : 200) : null;
-      persistHeight(heightKey, next);
-      return next;
-    });
-  }, [hero, heightKey]);
 
   const startResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -162,7 +154,7 @@ export function ChatInput({
       className={cn(
         'relative flex flex-col gap-1.5 overflow-hidden rounded-2xl border bg-adam-background-2/80 backdrop-blur-sm p-2 transition-colors duration-150',
         isFocused
-          ? 'border-adam-blue/50 shadow-[0_0_0_2px_rgba(0,166,255,0.10)]'
+          ? 'border-adam-accent/50 shadow-[0_0_0_2px_rgba(249,181,132,0.10)]'
           : 'border-white/[0.07] hover:border-white/[0.11]'
       )}
     >
@@ -175,7 +167,7 @@ export function ChatInput({
         title="Drag to resize"
         className="group/handle -mt-1 flex h-3 cursor-ns-resize touch-none select-none items-center justify-center"
       >
-        <span className="h-0.5 w-9 rounded-full bg-white/[0.10] transition-colors group-hover/handle:bg-white/30" />
+        <span className="h-0.5 w-9 rounded-full bg-white/[0.10] transition-colors group-hover/handle:bg-adam-accent/60" />
       </div>
 
       {showAnimatedPlaceholder && !prompt && !isFocused && (
@@ -217,7 +209,7 @@ export function ChatInput({
           hero
             ? 'px-2 py-2.5 text-sm leading-5'
             : 'px-1.5 py-[7px] text-[13px] leading-[18px]',
-          'text-adam-text-primary',
+          'text-adam-text-primary caret-adam-accent',
         )}
         placeholder={showAnimatedPlaceholder ? '' : placeholder}
         value={prompt}
@@ -241,7 +233,7 @@ export function ChatInput({
               className={cn(
                 'flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11.5px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.94]',
                 images.length > 0
-                  ? 'bg-adam-blue/15 text-adam-blue'
+                  ? 'bg-adam-accent/15 text-adam-accent'
                   : 'text-adam-text-tertiary hover:bg-white/[0.05] hover:text-adam-text-secondary'
               )}
               title="Upload reference images"
@@ -260,37 +252,26 @@ export function ChatInput({
           </>
         )}
 
-        <button
-          onClick={toggleExpanded}
-          aria-label={isExpanded ? 'Collapse composer' : 'Expand composer'}
-          aria-pressed={isExpanded}
-          className={cn(
-            'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-[background-color,color,transform] duration-150 active:scale-[0.94]',
-            isExpanded
-              ? 'bg-adam-blue/15 text-adam-blue'
-              : 'text-adam-text-tertiary hover:bg-white/[0.05] hover:text-adam-text-secondary',
-          )}
-          title={isExpanded ? 'Collapse composer' : 'Expand composer'}
-        >
-          {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-        </button>
-
         <div className="ml-auto flex items-center gap-2">
           <ProviderSelector selected={provider} onSelect={setProvider} requireVision={images.length > 0} />
           <ReasoningSelector provider={provider} value={reasoningEffort} onChange={setReasoningEffort} />
           <button
-            onClick={() => onSubmit()}
-            disabled={!isConnected || isGenerating || !canSend}
-            aria-label="Send"
+            onClick={() => (isGenerating ? onStop() : onSubmit())}
+            disabled={!isConnected || (!isGenerating && !canSend)}
+            aria-label={isGenerating ? 'Stop generation' : 'Send'}
             className={cn(
-              'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-[background-color,color,transform] duration-150 enabled:active:scale-[0.94]',
-              canSend && !isGenerating && isConnected
-                ? 'bg-adam-blue text-white hover:bg-adam-blue/90'
-                : 'bg-white/[0.06] text-adam-text-tertiary cursor-not-allowed'
+              'flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-[background-color,color,transform] duration-150 enabled:active:scale-[0.94]',
+              isGenerating
+                ? 'bg-adam-accent text-[#1A0F05] hover:bg-adam-accent/90'
+                : canSend && isConnected
+                  ? 'bg-adam-accent text-[#1A0F05] hover:bg-adam-accent/90 shadow-[0_0_18px_rgba(249,181,132,0.35)]'
+                  : 'bg-white/[0.06] text-adam-text-tertiary cursor-not-allowed'
             )}
-            title={!isConnected ? 'Please connect your wallet first' : ''}
+            title={!isConnected ? 'Please connect your wallet first' : isGenerating ? 'Stop generation' : ''}
           >
-            <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+            {isGenerating
+              ? <Square className="h-3.5 w-3.5 fill-current" />
+              : <ArrowUp className="h-4 w-4" strokeWidth={2.5} />}
           </button>
         </div>
       </div>

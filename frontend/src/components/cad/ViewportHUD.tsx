@@ -32,10 +32,10 @@ export function ViewportHUD({
             <g onClick={() => onSelectView('top')} className="cursor-pointer group/face">
               <path
                 d="M 48,14 L 78,29 L 48,44 L 18,29 Z"
-                fill={activeView === 'top' ? '#00A6FF' : 'rgba(255,255,255,0.03)'}
-                stroke={activeView === 'top' ? '#00A6FF' : 'rgba(255,255,255,0.15)'}
+                fill={activeView === 'top' ? '#F9B584' : 'rgba(255,255,255,0.03)'}
+                stroke={activeView === 'top' ? '#F9B584' : 'rgba(255,255,255,0.15)'}
                 strokeWidth="1.2"
-                className="transition-colors duration-150 group-hover/face:fill-[#00A6FF]/20 group-hover/face:stroke-[#00A6FF]/40"
+                className="transition-colors duration-150 group-hover/face:fill-[#F9B584]/20 group-hover/face:stroke-[#F9B584]/40"
               />
               <text
                 x="48"
@@ -54,10 +54,10 @@ export function ViewportHUD({
             <g onClick={() => onSelectView('front')} className="cursor-pointer group/face">
               <path
                 d="M 18,29 L 48,44 L 48,74 L 18,59 Z"
-                fill={activeView === 'front' ? '#00A6FF' : 'rgba(255,255,255,0.03)'}
-                stroke={activeView === 'front' ? '#00A6FF' : 'rgba(255,255,255,0.15)'}
+                fill={activeView === 'front' ? '#F9B584' : 'rgba(255,255,255,0.03)'}
+                stroke={activeView === 'front' ? '#F9B584' : 'rgba(255,255,255,0.15)'}
                 strokeWidth="1.2"
-                className="transition-colors duration-150 group-hover/face:fill-[#00A6FF]/20 group-hover/face:stroke-[#00A6FF]/40"
+                className="transition-colors duration-150 group-hover/face:fill-[#F9B584]/20 group-hover/face:stroke-[#F9B584]/40"
               />
               <text
                 x="33"
@@ -76,10 +76,10 @@ export function ViewportHUD({
             <g onClick={() => onSelectView('right')} className="cursor-pointer group/face">
               <path
                 d="M 48,44 L 78,29 L 78,59 L 48,74 Z"
-                fill={activeView === 'right' ? '#00A6FF' : 'rgba(255,255,255,0.03)'}
-                stroke={activeView === 'right' ? '#00A6FF' : 'rgba(255,255,255,0.15)'}
+                fill={activeView === 'right' ? '#F9B584' : 'rgba(255,255,255,0.03)'}
+                stroke={activeView === 'right' ? '#F9B584' : 'rgba(255,255,255,0.15)'}
                 strokeWidth="1.2"
-                className="transition-colors duration-150 group-hover/face:fill-[#00A6FF]/20 group-hover/face:stroke-[#00A6FF]/40"
+                className="transition-colors duration-150 group-hover/face:fill-[#F9B584]/20 group-hover/face:stroke-[#F9B584]/40"
               />
               <text
                 x="63"
@@ -103,7 +103,7 @@ export function ViewportHUD({
                 className={cn(
                   "py-0.5 px-1 rounded text-[8px] font-semibold border text-center transition-all duration-150",
                   activeView === 'left'
-                    ? "bg-adam-blue/15 text-adam-blue border-adam-blue/30"
+                    ? "bg-adam-accent/15 text-adam-accent border-adam-accent/30"
                     : "bg-white/[0.01] text-adam-text-secondary border-white/[0.04] hover:bg-white/[0.04] hover:text-adam-text-primary hover:border-white/[0.1]"
                 )}
               >
@@ -114,7 +114,7 @@ export function ViewportHUD({
                 className={cn(
                   "py-0.5 px-1 rounded text-[8px] font-semibold border text-center transition-all duration-150",
                   activeView === 'back'
-                    ? "bg-adam-blue/15 text-adam-blue border-adam-blue/30"
+                    ? "bg-adam-accent/15 text-adam-accent border-adam-accent/30"
                     : "bg-white/[0.01] text-adam-text-secondary border-white/[0.04] hover:bg-white/[0.04] hover:text-adam-text-primary hover:border-white/[0.1]"
                 )}
               >
@@ -127,7 +127,7 @@ export function ViewportHUD({
                 className={cn(
                   "py-0.5 px-1 rounded text-[8px] font-semibold border text-center transition-all duration-150",
                   activeView === 'bottom'
-                    ? "bg-adam-blue/15 text-adam-blue border-adam-blue/30"
+                    ? "bg-adam-accent/15 text-adam-accent border-adam-accent/30"
                     : "bg-white/[0.01] text-adam-text-secondary border-white/[0.04] hover:bg-white/[0.04] hover:text-adam-text-primary hover:border-white/[0.1]"
                 )}
               >
@@ -138,7 +138,7 @@ export function ViewportHUD({
                 className={cn(
                   "py-0.5 px-1 rounded text-[8px] font-semibold border text-center transition-all duration-150",
                   activeView === 'iso'
-                    ? "bg-adam-blue/15 text-adam-blue border-adam-blue/30"
+                    ? "bg-adam-accent/15 text-adam-accent border-adam-accent/30"
                     : "bg-white/[0.01] text-adam-text-secondary border-white/[0.04] hover:bg-white/[0.04] hover:text-adam-text-primary hover:border-white/[0.1]"
                 )}
               >
@@ -208,7 +208,7 @@ function ToolbarButton({
       className={cn(
         'glass-hud pointer-events-auto h-8 w-8 flex items-center justify-center',
         'text-adam-text-secondary hover:text-adam-text-primary transition-colors',
-        active && 'text-adam-blue',
+        active && 'text-adam-accent',
         disabled && 'opacity-40 cursor-not-allowed hover:text-adam-text-secondary',
       )}
     >

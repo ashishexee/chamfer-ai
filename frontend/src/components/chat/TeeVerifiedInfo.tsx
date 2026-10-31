@@ -124,7 +124,7 @@ export function TeeVerifiedInfo() {
           transition={{ duration: 0.15 }}
           onMouseEnter={openNow}
           onMouseLeave={closeSoon}
-          className="fixed z-50 rounded-xl border border-white/[0.08] bg-[#1C1C1C] shadow-2xl p-4 text-left cursor-default overflow-y-auto"
+          className="fixed z-50 rounded-xl border border-white/[0.08] bg-[#171717] shadow-2xl p-4 text-left cursor-default overflow-y-auto"
           style={{ width: POPOVER_W, right: pos.right, top: pos.top, bottom: pos.bottom, maxHeight: pos.maxHeight }}
           onClick={(e) => e.stopPropagation()}
         >

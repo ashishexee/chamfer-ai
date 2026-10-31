@@ -10,17 +10,18 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronUp,
+  Brain,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Message } from '@/types';
 import { getProviderDisplayName } from '@/lib/constants';
-import { NutIcon } from '@/components/hardware/NutIcon';
 import { ClarificationAnswers } from './ClarificationAnswers';
 import { WorkflowTimeline } from './WorkflowTimeline';
 import { TeeVerifyModal } from './TeeVerifyModal';
 import { TeeVerifiedInfo } from './TeeVerifiedInfo';
 import { DimViews } from './DimViews';
 import { CollapsibleText, isLongMessage } from './CollapsibleText';
+import { REASONING_LABELS } from './ReasoningSelector';
 import { cn } from '@/lib/utils';
 
 interface MessageBubbleProps {
@@ -292,14 +293,42 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
   const isUser = message.role === 'user';
   const isError = !!message.error;
   const isAssistant = message.role === 'assistant';
-  const hasContent = isAssistant && message.content && !message.clarification;
   const isBestEffort = message.bestEffort;
+  // The canned "Generated with …" line is now represented by the hover footer.
+  const isGeneratedSummary = isAssistant && /^\s*Generated with\b/i.test(message.content || '');
+  const modelId = message.provider || message.zeroG?.model;
+  const modelName = modelId ? getProviderDisplayName(modelId) : null;
+  // Legacy messages predate stored timestamps; the iteration's createdAt is
+  // the same generation moment, so use it rather than leaving the footer blank.
+  const iterationTimestamp = message.iterations?.[0]?.createdAt
+    ? Date.parse(message.iterations[0].createdAt)
+    : NaN;
+  const metaTimestamp =
+    message.timestamp ??
+    (Number.isFinite(iterationTimestamp) ? iterationTimestamp : undefined);
   const hasSpecifications =
     (message.clarificationAnswers && message.clarificationAnswers.length > 0) ||
     (message.specifications && message.specifications.length > 0);
   // Only plain user prompts collapse; specification cards keep their layout.
   const canTogglePrompt =
     isUser && !hasSpecifications && isLongMessage(message.content);
+
+  // A successful assistant turn is represented by its Workflow/artifacts, not
+  // by a canned "Generated with <model>" sentence. Legacy rows only contain
+  // that sentence, so treat them as body-less and skip the empty bubble.
+  const hasVisibleAssistantText =
+    !!message.content?.trim() && !isGeneratedSummary;
+  const hasAssistantBody =
+    hasVisibleAssistantText ||
+    (message.steps?.length ?? 0) > 0 ||
+    (!!message.snapshots && Object.keys(message.snapshots).length > 0) ||
+    (!!message.dimViews && Object.keys(message.dimViews).length > 0) ||
+    !!message.zeroG ||
+    !!message.warning ||
+    !!message.bestEffort ||
+    !!message.error ||
+    !!message.visionVerified ||
+    !!message.teeProof;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
@@ -319,7 +348,7 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: [0.25, 1, 0.5, 1] }}
-        className="ml-auto w-full max-w-[86%] space-y-1.5"
+        className="mx-auto w-full max-w-[86%] space-y-1.5"
       >
         {message.images && message.images.length > 0 && (
           <div className="flex gap-2 overflow-x-auto">
@@ -328,17 +357,37 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
                 key={i}
                 src={img}
                 alt={`Reference ${i + 1}`}
-                className="w-20 h-20 rounded-lg object-cover border border-adam-neutral-700/30"
+                className="h-10 w-10 rounded-lg object-cover border border-adam-neutral-700/30"
               />
             ))}
           </div>
         )}
         <ClarificationAnswers specifications={specifications} />
-        {message.timestamp && (
-          <div className="px-1 text-[10px] text-adam-text-tertiary/60 tabular-nums">
-            {formatTime(message.timestamp)}
-          </div>
-        )}
+      </motion.div>
+    );
+  }
+
+  // Generated-only legacy turns have no bubble of their own — the iteration
+  // card below carries the model. Keep a hover-only edit affordance so the
+  // turn remains actionable without rendering an empty box or the model label.
+  if (isAssistant && !hasAssistantBody) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: [0.25, 1, 0.5, 1] }}
+        className="group/msg flex w-full justify-start"
+      >
+        <div className="flex h-4 w-full max-w-[92%] items-center justify-end opacity-0 transition-opacity duration-200 group-hover/msg:opacity-100">
+          <button
+            type="button"
+            onClick={() => onEdit(index)}
+            className="flex h-4 w-4 items-center justify-center rounded text-adam-text-secondary transition-colors hover:bg-white/[0.06] hover:text-white"
+            title="Edit this design"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        </div>
       </motion.div>
     );
   }
@@ -350,103 +399,28 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
       transition={{ duration: 0.25, ease: [0.25, 1, 0.5, 1] }}
       className={cn('group flex w-full', isUser ? 'justify-end' : 'justify-start')}
     >
-      <div className={cn('relative flex min-w-0 flex-col', isUser ? 'max-w-[86%]' : 'w-full max-w-[92%]')}>
+      <div
+        className={cn(
+          'group/msg relative flex min-w-0 flex-col',
+          isUser
+            ? canTogglePrompt
+              ? 'w-full max-w-[86%]'
+              : 'max-w-[86%]'
+            : 'w-full max-w-[92%]',
+        )}
+      >
         <div
           className={cn(
-            'relative overflow-hidden rounded-2xl px-3.5 py-3 backdrop-blur-md',
+            'relative min-w-0 overflow-hidden rounded-2xl px-3.5 py-3 backdrop-blur-md',
             isUser
-              ? 'rounded-br-md bg-gradient-to-br from-[#1B4558] to-[#153847] text-white ring-1 ring-inset ring-white/[0.07] shadow-[0_12px_28px_-20px_rgba(0,0,0,0.85)]'
+              ? 'rounded-2xl bg-[#2A2A2A] text-white transition-transform duration-200 ease-out group-hover/msg:-translate-x-1'
               : isError
                 ? 'rounded-bl-md bg-red-500/[0.06] ring-1 ring-red-500/15'
-                : 'rounded-bl-md bg-[#1E2329]/90 ring-1 ring-white/[0.055]',
+                : 'rounded-bl-md bg-[#202020]/90 ring-1 ring-white/[0.055]',
           )}
         >
-          {/* Assistant header — no box, just identity + actions */}
-          {!isUser && (
-            <div className="mb-2 flex items-center gap-2.5">
-              <div className={cn(
-                'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ring-1',
-                isError
-                  ? 'bg-red-500/10 text-red-400 ring-red-500/15'
-                  : 'bg-adam-blue/10 text-adam-blue ring-adam-blue/15'
-              )}>
-                {isError
-                  ? <AlertTriangle className="h-3.5 w-3.5" />
-                  : <NutIcon className="h-3.5 w-3.5" />}
-              </div>
-
-              <div className="flex flex-1 items-center gap-2 min-w-0">
-                <span className={cn(
-                  'font-title text-[11px] font-bold tracking-[0.12em] truncate',
-                  isError ? 'text-red-300' : 'text-white'
-                )}>
-                  {message.provider ? getProviderDisplayName(message.provider).toUpperCase() : 'CHAMFER AI'}
-                </span>
-                {message.timestamp && (
-                  <span className="shrink-0 text-[10px] leading-none tabular-nums text-adam-text-tertiary/70">
-                    {formatTime(message.timestamp)}
-                  </span>
-                )}
-                {!isError && message.content && !message.bestEffort && (
-                  <span className="hidden rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-medium tracking-wide text-emerald-300 ring-1 ring-emerald-500/15 group-hover:inline-flex">
-                    {message.visionVerified ? 'vision-verified' : 'generated'}
-                  </span>
-                )}
-              </div>
-
-              {/* Action buttons */}
-              {hasContent && (
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
-                  <button
-                    onClick={() => onEdit(index)}
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-adam-text-tertiary hover:text-adam-blue hover:bg-adam-blue/10 transition-colors"
-                    title="Edit this design"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </button>
-                  {isBestEffort && (
-                    <button
-                      onClick={() => onRetry(index)}
-                      className="flex h-6 w-6 items-center justify-center rounded-md text-adam-text-tertiary hover:text-yellow-400 hover:bg-yellow-400/10 transition-colors"
-                      title="Retry generation"
-                    >
-                      <RotateCcw className="h-3 w-3" />
-                    </button>
-                  )}
-                  <button
-                    onClick={handleCopy}
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-adam-text-tertiary hover:text-adam-text-secondary hover:bg-white/[0.04] transition-colors"
-                    title={copied ? 'Copied' : 'Copy message'}
-                  >
-                    {copied
-                      ? <Check className="h-3 w-3 text-emerald-400" />
-                      : <Copy className="h-3 w-3" />}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Long-prompt toggle — icon only, top-right of the user bubble */}
-          {isUser && canTogglePrompt && (
-            <div className="mb-1 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setPromptExpanded((v) => !v)}
-                aria-expanded={promptExpanded}
-                aria-label={promptExpanded ? 'Collapse message' : 'Expand message'}
-                title={promptExpanded ? 'Show less' : 'Show full message'}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white/50 transition-colors hover:bg-white/[0.08] hover:text-white"
-              >
-                {promptExpanded
-                  ? <ChevronUp className="h-3.5 w-3.5" />
-                  : <ChevronDown className="h-3.5 w-3.5" />}
-              </button>
-            </div>
-          )}
-
           {/* Content */}
-          <div className={cn(isUser && 'space-y-2')}>
+          <div className={cn('min-w-0', isUser && 'space-y-2')}>
         {/* User images */}
         {isUser && message.images && message.images.length > 0 && (
           <div className="flex gap-2 mb-2 overflow-x-auto">
@@ -455,7 +429,7 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
                 key={i}
                 src={img}
                 alt={`Reference ${i + 1}`}
-                className="w-20 h-20 rounded-lg object-cover ring-1 ring-white/15"
+                className="h-10 w-10 rounded-lg object-cover ring-1 ring-white/15"
               />
             ))}
           </div>
@@ -468,12 +442,12 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
             real error below the fold and reads as success-with-a-note, which
             is exactly the complaint in the screenshot. Hide it when
             bestEffort is set so the Workflow sits at the top. */}
-        {!(isAssistant && message.bestEffort) && (
+        {!(isAssistant && message.bestEffort) && !isGeneratedSummary && (
           isUser ? (
             <CollapsibleText
               text={message.content}
-              className="text-sm leading-relaxed text-white/90"
-              fadeClassName="from-[#153847] via-[#153847]/85 to-transparent"
+              className="text-sm leading-relaxed text-white/95"
+              fadeClassName="from-[#2A2A2A] via-[#2A2A2A]/85 to-transparent"
               expanded={canTogglePrompt ? promptExpanded : undefined}
               onToggle={canTogglePrompt ? () => setPromptExpanded((v) => !v) : undefined}
             />
@@ -600,16 +574,84 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
           />
         )}
           </div>
-
-          {/* User bubble footer */}
-          {isUser && message.timestamp && (
-            <div className="mt-1.5 flex justify-end">
-              <span className="text-[9.5px] tabular-nums text-white/40">
-                {formatTime(message.timestamp)}
-              </span>
-            </div>
-          )}
         </div>
+
+        {/* Floating collapse control, outside the bubble so text keeps full width. */}
+        {isUser && canTogglePrompt && (
+          <button
+            type="button"
+            onClick={() => setPromptExpanded((v) => !v)}
+            aria-expanded={promptExpanded}
+            aria-label={promptExpanded ? 'Collapse message' : 'Expand message'}
+            title={promptExpanded ? 'Show less' : 'Show full message'}
+            className="absolute -top-2 right-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-[#2A2A2A] text-white/70 ring-1 ring-white/[0.10] transition-colors hover:bg-[#353535] hover:text-white"
+          >
+            {promptExpanded
+              ? <ChevronUp className="h-3 w-3" />
+              : <ChevronDown className="h-3 w-3" />}
+          </button>
+        )}
+
+        {/* Assistant metadata — appears at the end of the bubble on hover. */}
+        {!isUser && (
+          <div className="pointer-events-none mt-1 flex h-4 w-full items-center gap-1.5 px-3 text-[11px] leading-none text-adam-text-secondary/90 opacity-0 transition-all duration-200 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100">
+            {metaTimestamp && (
+              <>
+                <span className="shrink-0 tabular-nums">{formatTime(metaTimestamp)}</span>
+                <span className="h-2.5 w-px shrink-0 bg-white/10" />
+              </>
+            )}
+            <span className="min-w-0 truncate">
+              {modelName ?? 'Chamfer AI'}
+            </span>
+            {(message.reasoningEffort || message.reasoning || (message.steps && message.steps.length > 0)) && (
+              <>
+                <span className="h-2.5 w-px shrink-0 bg-white/10" />
+                <span className="inline-flex shrink-0 items-center gap-1">
+                  <Brain className="h-3 w-3" />
+                  {message.reasoningEffort ? REASONING_LABELS[message.reasoningEffort] : 'Thinking'}
+                </span>
+              </>
+            )}
+            <div className="ml-auto flex shrink-0 items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => onEdit(index)}
+                className="flex h-4 w-4 items-center justify-center rounded text-adam-text-secondary transition-colors hover:bg-white/[0.06] hover:text-white"
+                title="Edit this design"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+              {isBestEffort && (
+                <button
+                  type="button"
+                  onClick={() => onRetry(index)}
+                  className="flex h-4 w-4 items-center justify-center rounded text-adam-text-secondary transition-colors hover:bg-white/[0.06] hover:text-white"
+                  title="Retry generation"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="flex h-4 w-4 items-center justify-center rounded text-adam-text-secondary transition-colors hover:bg-white/[0.06] hover:text-white"
+                title={copied ? 'Copied' : 'Copy message'}
+              >
+                {copied
+                  ? <Check className="h-3 w-3" />
+                  : <Copy className="h-3 w-3" />}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Timestamp lives outside the bubble and slides in on hover. */}
+        {isUser && message.timestamp && (
+          <span className="pointer-events-none absolute bottom-2.5 right-full mr-2 translate-x-1.5 whitespace-nowrap text-[9.5px] tabular-nums text-adam-text-tertiary/70 opacity-0 transition-all duration-200 ease-out group-hover/msg:translate-x-0 group-hover/msg:opacity-100">
+            {formatTime(message.timestamp)}
+          </span>
+        )}
       </div>
     </motion.div>
   );

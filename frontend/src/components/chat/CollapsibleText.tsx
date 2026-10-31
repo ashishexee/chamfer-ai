@@ -46,14 +46,14 @@ export function CollapsibleText({
   const long = isLongMessage(text);
 
   if (!long) {
-    return <div className={cn("whitespace-pre-wrap break-words", className)}>{text}</div>;
+    return <div className={cn("whitespace-pre-wrap break-words [overflow-wrap:anywhere]", className)}>{text}</div>;
   }
 
   return (
     <div>
       <div
         className={cn(
-          "relative whitespace-pre-wrap break-words",
+          "relative whitespace-pre-wrap break-words [overflow-wrap:anywhere]",
           !expanded && "max-h-[8.5rem] overflow-hidden",
           className,
         )}
@@ -68,7 +68,7 @@ export function CollapsibleText({
           type="button"
           onClick={toggle}
           aria-expanded={expanded}
-          className="mt-1.5 inline-flex items-center gap-1 rounded-md py-0.5 text-[11px] font-medium text-adam-blue transition-colors hover:text-adam-blue/80"
+          className="mt-1.5 inline-flex items-center gap-1 rounded-md py-0.5 text-[11px] font-medium text-adam-accent transition-colors hover:text-adam-accent/80"
         >
           {expanded ? (
             <>

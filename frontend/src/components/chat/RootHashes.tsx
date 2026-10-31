@@ -1,8 +1,20 @@
 import { useState } from 'react';
-import { Check, ChevronRight, Copy, ExternalLink, Download, Loader2 } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  Box,
+  Boxes,
+  Check,
+  Copy,
+  Download,
+  ExternalLink,
+  FileBox,
+  FileCode2,
+  Loader2,
+  ScanLine,
+  type LucideIcon,
+} from 'lucide-react';
 import { API_URL } from '@/lib/constants';
 import { cn } from '@/lib/utils';
-
 import type { RootHashData, TxSeqData } from '@/types';
 
 // Re-exported for the existing imports that point at this module.
@@ -17,29 +29,117 @@ interface RootHashesProps {
   txSeqs?: TxSeqData | null;
   loading: boolean;
   progress?: UploadProgress | null;
-  /** Initial expanded state — caller varies it per message (newest open, history collapsed). */
-  defaultExpanded?: boolean;
-  /** Override the card's outer spacing (defaults to mt-3). */
+  /** Override the outer spacing (defaults to mt-3). */
   className?: string;
 }
 
 const EXPLORER_BASE = 'https://storagescan-galileo.0g.ai/submission/';
 
-const FILE_META: { key: keyof RootHashData; label: string; ext: string; isBase64: boolean }[] = [
-  { key: 'code', label: 'Code', ext: 'py', isBase64: false },
-  { key: 'stl', label: 'STL', ext: 'stl', isBase64: true },
-  { key: 'step', label: 'STEP', ext: 'step', isBase64: true },
-  { key: 'glb', label: 'GLB', ext: 'glb', isBase64: true },
-  { key: 'dimViews', label: 'Dim Views', ext: 'json', isBase64: false },
+const FILE_META: {
+  key: keyof RootHashData;
+  label: string;
+  ext: string;
+  isBase64: boolean;
+  icon: LucideIcon;
+}[] = [
+  { key: 'code', label: 'Code', ext: 'py', isBase64: false, icon: FileCode2 },
+  { key: 'stl', label: 'STL', ext: 'stl', isBase64: true, icon: Box },
+  { key: 'step', label: 'STEP', ext: 'step', isBase64: true, icon: FileBox },
+  { key: 'glb', label: 'GLB', ext: 'glb', isBase64: true, icon: Boxes },
+  { key: 'dimViews', label: 'Dim views', ext: 'json', isBase64: false, icon: ScanLine },
 ];
 
-function truncateHashParts(hash: string): { start: string; end: string } {
-  if (hash.length <= 16) return { start: hash, end: '' };
-  return { start: hash.slice(0, 10), end: hash.slice(-6) };
+const ACTION =
+  'group/action flex h-7 items-center rounded-md px-1.5 text-adam-text-tertiary outline-none transition-colors duration-150 hover:bg-white/[0.06] hover:text-white focus-visible:ring-1 focus-visible:ring-adam-accent/60 disabled:cursor-not-allowed disabled:opacity-40';
+
+// Per-button reveal. The label sits BEFORE the icon and grows to the left, so
+// the icon under the cursor never moves as the label opens.
+const ACTION_LABEL =
+  'max-w-0 overflow-hidden whitespace-nowrap text-right text-[10px] font-medium opacity-0 transition-[margin,max-width,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover/action:mr-1.5 group-hover/action:max-w-[56px] group-hover/action:opacity-100 group-focus/action:mr-1.5 group-focus/action:max-w-[56px] group-focus/action:opacity-100';
+
+function ActionIcon({
+  active,
+  children,
+}: {
+  active: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.span
+        key={active}
+        initial={{ opacity: 0, scale: 0.7 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.7 }}
+        transition={{ duration: 0.15, ease: 'easeOut' }}
+        className="flex h-3.5 w-3.5 items-center justify-center"
+      >
+        {children}
+      </motion.span>
+    </AnimatePresence>
+  );
 }
 
-function HashRow({ label, hash, txSeq, ext, isBase64 }: {
+function ActionButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
   label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      className={ACTION}
+    >
+      <span className={ACTION_LABEL}>{label}</span>
+      {children}
+    </button>
+  );
+}
+
+function ActionLink({
+  label,
+  ariaLabel,
+  href,
+  children,
+}: {
+  label: string;
+  ariaLabel: string;
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={ariaLabel}
+      className={ACTION}
+    >
+      <span className={ACTION_LABEL}>{label}</span>
+      {children}
+    </a>
+  );
+}
+
+function ArtifactRow({
+  label,
+  icon: Icon,
+  hash,
+  txSeq,
+  ext,
+  isBase64,
+}: {
+  label: string;
+  icon: LucideIcon;
   hash: string;
   txSeq?: number;
   ext: string;
@@ -51,7 +151,7 @@ function HashRow({ label, hash, txSeq, ext, isBase64 }: {
   const copy = () => {
     navigator.clipboard.writeText(hash);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   const explorerUrl = txSeq ? `${EXPLORER_BASE}${txSeq}` : `${EXPLORER_BASE}${hash}`;
@@ -77,8 +177,6 @@ function HashRow({ label, hash, txSeq, ext, isBase64 }: {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      // Revoke after the click has been processed; revoking in the same task
-      // can abort the download in some browsers.
       setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (err) {
       console.error('[0G] Download failed:', err);
@@ -87,164 +185,148 @@ function HashRow({ label, hash, txSeq, ext, isBase64 }: {
     }
   };
 
-  const { start, end } = truncateHashParts(hash);
-
   return (
-    <div className="flex items-center gap-3 px-3.5 py-2 transition-colors hover:bg-white/[0.02]">
-      <span className="w-16 shrink-0 text-[11px] font-medium uppercase tracking-wide text-adam-text-tertiary/80">
-        {label}
+    <div className="flex h-9 items-center justify-between gap-3 px-3 transition-colors hover:bg-white/[0.025]">
+      <span className="flex min-w-0 items-center gap-2">
+        <Icon className="h-3.5 w-3.5 shrink-0 text-adam-text-tertiary/50" />
+        <span className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-adam-text-secondary/75">
+          {label}
+        </span>
       </span>
 
-      <span className="flex min-w-0 flex-1 items-center gap-1.5 font-mono text-[11.5px] tabular-nums">
-        <span className="truncate text-adam-text-secondary/80">{start}</span>
-        <span className="shrink-0 select-none text-[10px] tracking-[0.2em] text-white/15">···</span>
-        {end && <span className="shrink-0 text-adam-text-secondary/80">{end}</span>}
-      </span>
-
-      {/* Always visible — touch devices have no hover */}
       <div className="flex shrink-0 items-center gap-0.5">
-        <button
-          onClick={copy}
-          aria-label={`Copy ${label} hash`}
-          className={cn(
-            'rounded-md p-1 transition-colors hover:bg-white/[0.06]',
-            copied ? 'text-emerald-400' : 'text-white/30 hover:text-white',
-          )}
-        >
-          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-        </button>
-        <a
+        <ActionButton label={copied ? 'Copied' : 'Copy'} onClick={copy}>
+          <ActionIcon active={copied ? 'check' : 'copy'}>
+            {copied
+              ? <Check className="h-3.5 w-3.5 text-emerald-400" />
+              : <Copy className="h-3.5 w-3.5" />}
+          </ActionIcon>
+        </ActionButton>
+
+        <ActionLink
+          label="Open"
+          ariaLabel={`Open ${label} on 0G`}
           href={explorerUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={`View ${label} on 0G Explorer`}
-          className="rounded-md p-1 text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white"
         >
-          <ExternalLink className="h-3 w-3" />
-        </a>
-        <button
-          onClick={download}
-          disabled={downloading}
-          aria-label={`Download ${label} from 0G`}
-          className="rounded-md p-1 text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white disabled:opacity-40"
-        >
-          {downloading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-        </button>
+          <ActionIcon active="open">
+            <ExternalLink className="h-3.5 w-3.5" />
+          </ActionIcon>
+        </ActionLink>
+
+        <ActionButton label="Save" onClick={download} disabled={downloading}>
+          <ActionIcon active={downloading ? 'loading' : 'download'}>
+            {downloading
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Download className="h-3.5 w-3.5" />}
+          </ActionIcon>
+        </ActionButton>
       </div>
     </div>
   );
 }
 
-/** In-flight row — a file that hasn't landed on 0G yet. */
-function ProgressRow({ label, status }: { label: string; status: string }) {
+function StatusRow({
+  label,
+  icon: Icon,
+  status,
+}: {
+  label: string;
+  icon: LucideIcon;
+  status: string;
+}) {
   return (
-    <div className="flex items-center gap-3 px-3.5 py-2">
-      <span className="w-16 shrink-0 text-[11px] font-medium uppercase tracking-wide text-adam-text-tertiary/80">
-        {label}
+    <div className="flex h-9 items-center justify-between gap-3 px-3">
+      <span className="flex min-w-0 items-center gap-2">
+        <Icon className="h-3.5 w-3.5 shrink-0 text-adam-text-tertiary/50" />
+        <span className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-adam-text-secondary/60">
+          {label}
+        </span>
       </span>
       <span
         className={cn(
-          'flex-1 text-[11.5px]',
-          status === 'uploading' ? 'text-adam-blue' : 'text-adam-text-tertiary/70',
+          'flex items-center gap-1.5 text-[10.5px]',
+          status === 'uploading' ? 'text-adam-accent' : 'text-adam-text-tertiary/70',
         )}
       >
+        {status === 'uploading' && <Loader2 className="h-3 w-3 animate-spin" />}
         {status === 'uploading' && 'Uploading…'}
-        {status === 'done' && 'Stored'}
         {status === 'skipped' && 'No data'}
         {status === 'pending' && 'Waiting…'}
-      </span>
-      <span className="flex w-4 shrink-0 items-center justify-center">
-        {status === 'uploading' && <Loader2 className="h-3 w-3 animate-spin text-adam-blue" />}
-        {status === 'done' && <Check className="h-3 w-3 text-emerald-400" />}
-        {status === 'pending' && <span className="h-1.5 w-1.5 rounded-full ring-1 ring-white/20" />}
+        {status === 'done' && 'Stored'}
       </span>
     </div>
   );
 }
 
-export function RootHashes({ hashes, txSeqs, loading, progress, defaultExpanded = true, className }: RootHashesProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+/**
+ * Artifact actions for a stored version. Hashes are deliberately not rendered;
+ * the row is the artifact name plus Copy / Open / Save. The whole icon group
+ * shares one hover reveal, so the labels expand together in a single motion.
+ */
+export function RootHashes({ hashes, txSeqs, loading, progress, className }: RootHashesProps) {
   const isUploading = loading && !!progress && Object.keys(progress).length > 0;
-  // Matches the assistant bubble surface exactly.
-  const cardCls = cn(
-    'overflow-hidden rounded-2xl bg-[#1E2329]/90 ring-1 ring-white/[0.055] backdrop-blur-md shadow-[0_8px_24px_-16px_rgba(0,0,0,0.6)]',
-    className ?? 'mt-3',
-  );
 
-  // Proofs are being fetched but no per-file progress has arrived yet
-  if (loading && !isUploading) {
+  const rows = FILE_META.map(({ key, label, ext, isBase64, icon }) => {
+    const p = progress?.[key];
+    const hash = hashes?.[key] ?? p?.rootHash;
+    const tx = txSeqs?.[key] ?? p?.txSeq;
+    const status = hash ? 'stored' : p?.status;
+    return { key, label, ext, isBase64, icon, hash, tx, status };
+  }).filter((r) => r.hash || r.status);
+
+  if (loading && !isUploading && rows.length === 0) {
     return (
-      <div className={cardCls}>
-        <div className="flex items-center gap-1.5 px-3.5 py-2.5 text-[12px] font-medium text-adam-text-secondary">
-          <Loader2 className="h-3 w-3 animate-spin text-adam-blue" />
-          Fetching proofs from 0G…
+      <div
+        className={cn(
+          'relative overflow-hidden divide-y divide-white/[0.045] rounded-2xl bg-[#202020] ring-1 ring-white/[0.05]',
+          className ?? 'mt-3',
+        )}
+      >
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex h-9 items-center justify-between gap-3 px-3">
+            <div className="h-2.5 w-16 rounded-full bg-white/[0.06]" />
+            <div className="flex items-center gap-1.5">
+              <div className="h-5 w-5 rounded-md bg-white/[0.04]" />
+              <div className="h-5 w-5 rounded-md bg-white/[0.04]" />
+              <div className="h-5 w-5 rounded-md bg-white/[0.04]" />
+            </div>
+          </div>
+        ))}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
+          <div className="absolute inset-y-0 left-0 w-full animate-shimmer bg-gradient-to-r from-transparent via-white/[0.05] to-transparent" />
         </div>
       </div>
     );
   }
 
-  // One unified row per artifact, merging live upload progress with the
-  // final hashes — a row becomes actionable the moment its hash exists.
-  const rows = FILE_META.map(({ key, label, ext, isBase64 }) => {
-    const p = progress?.[key];
-    const hash = hashes?.[key] ?? p?.rootHash;
-    const tx = txSeqs?.[key] ?? p?.txSeq;
-    const status = hash ? 'stored' : p?.status ?? (loading ? 'pending' : undefined);
-    return { key, label, ext, isBase64, hash, tx, status };
-  }).filter((r) => r.hash || r.status);
-
   if (rows.length === 0) return null;
 
-  const storedRows = rows.filter((r) => r.hash);
-  const inFlight = !!loading && rows.some((r) => !r.hash && (r.status === 'uploading' || r.status === 'pending'));
-
   return (
-    <div className={cardCls}>
-      {/* Collapsible section header — same grammar as the right-panel accordions */}
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((e) => !e)}
-        className="flex w-full select-none items-center gap-1.5 px-3.5 py-2 transition-colors hover:bg-white/[0.02]"
-        title="Content-addressed on 0G — hashes prove what was stored and are verifiable on 0G StorageScan"
-      >
-        <ChevronRight
-          className={`h-3.5 w-3.5 text-adam-text-tertiary/70 transition-transform duration-200 ${
-            expanded ? 'rotate-90' : ''
-          }`}
-        />
-        <span className="flex flex-1 items-center gap-1.5 text-left text-[12.5px] font-medium text-adam-text-secondary">
-          {inFlight && <Loader2 className="h-3 w-3 animate-spin text-adam-blue" />}
-          {inFlight ? 'Uploading to 0G' : 'Stored on 0G'}
-        </span>
-        <span className="font-mono text-[11.5px] tabular-nums text-adam-text-tertiary">
-          {inFlight
-            ? `${storedRows.length}/${FILE_META.length}`
-            : `${storedRows.length} ${storedRows.length === 1 ? 'file' : 'files'}`}
-        </span>
-      </button>
-
-      {expanded && (
-        <div className="border-t border-white/[0.04] py-1">
-          {rows.map((r) =>
-            r.hash ? (
-              <HashRow key={r.key} label={r.label} hash={r.hash} txSeq={r.tx} ext={r.ext} isBase64={r.isBase64} />
-            ) : (
-              <ProgressRow key={r.key} label={r.label} status={r.status!} />
-            ),
-          )}
-        </div>
+    <div
+      className={cn(
+        'divide-y divide-white/[0.045] overflow-hidden rounded-2xl bg-[#202020] ring-1 ring-white/[0.05]',
+        className ?? 'mt-3',
       )}
-
-      {inFlight && (
-        <div className="px-3.5 pb-2">
-          <div className="h-0.5 overflow-hidden rounded-full bg-white/[0.06]">
-            <div
-              className="h-full rounded-full bg-adam-blue transition-all duration-500"
-              style={{ width: `${(storedRows.length / FILE_META.length) * 100}%` }}
-            />
-          </div>
-        </div>
+    >
+      {rows.map((row) =>
+        row.hash ? (
+          <ArtifactRow
+            key={row.key}
+            label={row.label}
+            icon={row.icon}
+            hash={row.hash}
+            txSeq={row.tx}
+            ext={row.ext}
+            isBase64={row.isBase64}
+          />
+        ) : (
+          <StatusRow
+            key={row.key}
+            label={row.label}
+            icon={row.icon}
+            status={row.status ?? 'pending'}
+          />
+        ),
       )}
     </div>
   );

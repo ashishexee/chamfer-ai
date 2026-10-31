@@ -93,10 +93,10 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
     <div className="overflow-hidden rounded-xl border border-white/[0.05] bg-white/[0.02]">
       {/* Animated status row — the same component used while streaming and after a reload */}
       <div className="flex items-center justify-between gap-3 border-b border-white/[0.04] px-3 py-2">
+        {/* Stage-level summary only. The specific step, its badge and its
+            detail live in the list below, so nothing is repeated. */}
         <AiStatus
           state={statusState}
-          label={runningStep?.label}
-          detail={runningStep?.detail || undefined}
           elapsed={runningStep ? undefined : elapsedSeconds}
           className="h-7 min-w-0 text-[12.5px]"
         />
@@ -122,9 +122,10 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
               seenRef.current.add(step.id);
             }
 
-            // Running steps auto-expand (their detail is the live action); done
-            // ones collapse unless the user toggled them explicitly.
-            const isExpanded = expanded[step.id] ?? isRunning;
+            // Running steps auto-expand (their detail is the live action).
+            // Failed steps open too, so the real parser/tool error is visible
+            // without a click; done ones collapse unless toggled explicitly.
+            const isExpanded = expanded[step.id] ?? (isRunning || isError);
 
             return (
               <motion.div
@@ -149,7 +150,7 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
                         <circle cx="10" cy="10" r="8.5" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
                         <circle
                           cx="10" cy="10" r="8.5" fill="none"
-                          stroke="#00A6FF" strokeWidth="2" strokeLinecap="round"
+                          stroke="#F9B584" strokeWidth="2" strokeLinecap="round"
                           strokeDasharray="15 38.4"
                         />
                       </svg>
@@ -171,7 +172,7 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
                         </svg>
                       </span>
                     ) : (
-                      <Icon className={cn('h-3 w-3', isRunning ? 'text-adam-blue' : 'text-adam-text-tertiary')} />
+                      <Icon className={cn('h-3 w-3', isRunning ? 'text-adam-accent' : 'text-adam-text-tertiary')} />
                     )}
                   </div>
 
@@ -179,7 +180,7 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
                   <div className="flex-1 text-left min-w-0">
                     <span className={cn(
                       'text-[12px] transition-colors',
-                      isRunning ? 'text-adam-blue font-medium' :
+                      isRunning ? 'text-adam-accent font-medium' :
                       isDone ? 'text-adam-text-secondary' :
                       isError ? 'text-red-400/90' :
                       'text-adam-text-tertiary'
@@ -191,7 +192,7 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
                   {/* Status indicator */}
                   <div className="flex items-center gap-1.5 shrink-0">
                     {isRunning && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-adam-blue/10 text-adam-blue font-medium tabular-nums">
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-adam-accent/10 text-adam-accent font-medium tabular-nums">
                         Running
                       </span>
                     )}
@@ -219,11 +220,16 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
                       className="overflow-hidden"
                     >
                       <div className="pl-8 pr-2 pb-1.5 pt-0.5">
-                        <div className="flex items-start gap-1.5">
-                          <Brain className="h-2.5 w-2.5 text-adam-text-tertiary/40 mt-0.5 shrink-0" />
-                          <div className="text-[11px] text-adam-text-tertiary/80 leading-relaxed">
-                            {step.detail}
-                          </div>
+                        <div
+                          className={cn(
+                            'text-[11px] leading-relaxed',
+                            isError
+                              ? 'max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-mono text-red-300/80'
+                              : 'truncate text-adam-text-tertiary/80',
+                          )}
+                          title={isError ? undefined : step.detail}
+                        >
+                          {step.detail}
                         </div>
                       </div>
                     </motion.div>

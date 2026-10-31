@@ -282,7 +282,7 @@ export function ClarificationMessage({ questions, onSubmit, isGenerating }: Clar
                                 className={cn(
                                   'flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition-all duration-200',
                                   on
-                                    ? 'bg-adam-blue shadow-[0_0_8px_rgba(0,166,255,0.35)]'
+                                    ? 'bg-adam-accent shadow-[0_0_8px_rgba(249,181,132,0.35)]'
                                     : 'text-transparent shadow-[inset_0_0_0_1.5px_rgba(255,255,255,0.16)]',
                                 )}
                               >
@@ -315,7 +315,7 @@ export function ClarificationMessage({ questions, onSubmit, isGenerating }: Clar
                             className={cn(
                               'flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition-all duration-200',
                               custom[qIdx]?.trim()
-                                ? 'bg-adam-blue shadow-[0_0_8px_rgba(0,166,255,0.35)]'
+                                ? 'bg-adam-accent shadow-[0_0_8px_rgba(249,181,132,0.35)]'
                                 : 'text-transparent shadow-[inset_0_0_0_1.5px_rgba(255,255,255,0.16)]',
                             )}
                           >
@@ -396,7 +396,7 @@ export function ClarificationMessage({ questions, onSubmit, isGenerating }: Clar
                 disabled={!hasAnswer || isGenerating}
                 onClick={advance}
                 className={cn(
-                  'rounded-full bg-adam-blue px-3 py-1 text-[12px] font-semibold text-white transition-colors duration-150 hover:bg-adam-blue/90',
+                  'rounded-full bg-adam-accent px-3 py-1 text-[12px] font-semibold text-white transition-colors duration-150 hover:bg-adam-accent/90',
                   'disabled:cursor-not-allowed disabled:opacity-40',
                 )}
               >

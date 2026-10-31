@@ -40,7 +40,7 @@ const DEFAULT_PHASES: ProgressiveFluxPhase[] = [
   { at: 100, label: "all done" },
 ];
 
-const FLUX_FROM = "var(--flux-from, #00A6FF)";
+const FLUX_FROM = "var(--flux-from, #F9B584)";
 const FLUX_TO = "var(--flux-to, #74e1ff)";
 const FLUX_MID = `color-mix(in oklab, ${FLUX_FROM}, ${FLUX_TO})`;
 

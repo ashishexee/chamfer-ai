@@ -27,7 +27,7 @@ interface PixelLoaderProps {
 }
 
 /**
- * Pixel-grid loader restyled to the adam palette (blue cells). With a
+ * Pixel-grid loader restyled to the adam palette (orange cells). With a
  * label it also shows the shimmering text and live elapsed timer.
  */
 export function PixelLoader({ label }: PixelLoaderProps) {
@@ -39,7 +39,7 @@ export function PixelLoader({ label }: PixelLoaderProps) {
         {DELAYS.map((d, i) => (
           <span
             key={i}
-            className="h-[4px] w-[4px] rounded-[1px] bg-adam-blue"
+            className="h-[4px] w-[4px] rounded-[1px] bg-adam-accent"
             style={{
               opacity: 0.15,
               animation: `pixel-on 1400ms ease-in-out ${d}ms infinite`,

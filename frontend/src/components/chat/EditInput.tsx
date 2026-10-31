@@ -22,17 +22,17 @@ export function EditInput({ originalPrompt, onSubmit, onCancel }: EditInputProps
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="mx-3.5 my-2 rounded-xl border border-adam-blue/20 bg-adam-blue/[0.04] p-3"
+      className="mx-3.5 my-2 rounded-xl border border-adam-accent/20 bg-adam-accent/[0.04] p-3"
     >
       <div className="flex items-center gap-2 mb-2">
-        <Wand2 className="h-3.5 w-3.5 text-adam-blue" />
-        <span className="text-[11px] text-adam-blue font-medium">Edit previous design</span>
+        <Wand2 className="h-3.5 w-3.5 text-adam-accent" />
+        <span className="text-[11px] text-adam-accent font-medium">Edit previous design</span>
         <span className="text-[10px] text-adam-text-tertiary/60 flex-1 truncate">
           Original: {originalPrompt}
         </span>
       </div>
       <textarea
-        className="w-full bg-adam-bg-dark/60 rounded-lg px-3 py-2 text-sm text-adam-text-primary resize-none outline-none border border-adam-neutral-700/30 focus:border-adam-blue/40 placeholder:text-adam-text-tertiary/50"
+        className="w-full bg-adam-bg-dark/60 rounded-lg px-3 py-2 text-sm text-adam-text-primary resize-none outline-none border border-adam-neutral-700/30 focus:border-adam-accent/40 placeholder:text-adam-text-tertiary/50"
         rows={2}
         placeholder="Describe what you want to change..."
         value={prompt}
@@ -53,7 +53,7 @@ export function EditInput({ originalPrompt, onSubmit, onCancel }: EditInputProps
           className={cn(
             'flex items-center gap-1 text-[11px] px-3 py-1.5 rounded-md transition-all',
             prompt.trim()
-              ? 'bg-adam-blue text-white hover:bg-adam-blue/90'
+              ? 'bg-adam-accent text-white hover:bg-adam-accent/90'
               : 'bg-adam-neutral-800 text-adam-text-tertiary cursor-not-allowed'
           )}
         >

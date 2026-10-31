@@ -16,6 +16,8 @@ const LABELS: Record<ReasoningEffort, string> = {
   adaptive: 'Adaptive',
 };
 
+export const REASONING_LABELS = LABELS;
+
 const BLURBS: Partial<Record<ReasoningEffort, string>> = {
   minimal: 'Shortest reasoning pass',
   low: 'Fastest useful depth',
@@ -119,7 +121,7 @@ export function ReasoningSelector({ provider, value, onChange }: ReasoningSelect
         title={`Reasoning depth: ${LABELS[current]}`}
         className={cn(
           'flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11.5px] font-medium transition-colors duration-150',
-          open ? 'bg-white/[0.06] text-white' : 'text-adam-text-tertiary hover:bg-white/[0.05] hover:text-adam-text-secondary',
+          open ? 'bg-white/[0.06] text-white' : 'text-adam-text-secondary hover:bg-white/[0.05] hover:text-white',
         )}
       >
         <Brain className="h-3.5 w-3.5" />
@@ -140,7 +142,7 @@ export function ReasoningSelector({ provider, value, onChange }: ReasoningSelect
           <div
             role="listbox"
             className={cn(
-              'w-[220px] overflow-y-auto rounded-xl border border-white/[0.06] bg-[#1E1F20] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.55)]',
+              'w-[220px] overflow-y-auto rounded-xl border border-white/[0.06] bg-[#202020] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.55)]',
               closing ? 'animate-menu-out' : 'animate-menu-in',
             )}
             style={{ transformOrigin: 'bottom left' }}
@@ -171,7 +173,7 @@ export function ReasoningSelector({ provider, value, onChange }: ReasoningSelect
                     )}
                   </span>
                   {selected && (
-                    <span className="shrink-0 text-adam-blue">
+                    <span className="shrink-0 text-adam-accent">
                       <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
                     </span>
                   )}

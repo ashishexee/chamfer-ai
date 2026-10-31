@@ -195,7 +195,7 @@ export function InspectPanel({ store, onStoreIteration }: InspectPanelProps) {
                       !chatSessionId ||
                       latestMessageOrder === null
                     }
-                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-adam-blue/25 bg-adam-blue/10 px-3 py-2 text-xs font-medium text-adam-blue transition-colors hover:bg-adam-blue/[0.15] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-adam-accent/25 bg-adam-accent/10 px-3 py-2 text-xs font-medium text-adam-accent transition-colors hover:bg-adam-accent/[0.15] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Save className="h-3.5 w-3.5" />
                     {isStoringIteration ? (

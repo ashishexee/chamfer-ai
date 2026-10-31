@@ -30,7 +30,7 @@ export function ParameterPanel({ parameters, values, onChange }: ParameterPanelP
                 <button
                   onClick={() => onChange(name, !val)}
                   className={`relative h-4.5 w-8 shrink-0 rounded-full transition-all duration-200 outline-none ${
-                    val ? 'bg-adam-blue/90' : 'bg-white/[0.08] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
+                    val ? 'bg-adam-accent/90' : 'bg-white/[0.08] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
                   }`}
                 >
                   <div
@@ -52,10 +52,10 @@ export function ParameterPanel({ parameters, values, onChange }: ParameterPanelP
                     <select
                       value={String(val)}
                       onChange={(e) => onChange(name, e.target.value)}
-                      className="cursor-pointer appearance-none border-b border-transparent bg-transparent py-0.5 pr-5 text-right text-[12px] text-adam-text-primary outline-none transition-colors hover:border-white/[0.12] focus:border-adam-blue/60"
+                      className="cursor-pointer appearance-none border-b border-transparent bg-transparent py-0.5 pr-5 text-right text-[12px] text-adam-text-primary outline-none transition-colors hover:border-white/[0.12] focus:border-adam-accent/60"
                     >
                       {schema.options.map((opt) => (
-                        <option key={opt} value={opt} className="bg-[#1C1C1C] text-adam-text-primary">
+                        <option key={opt} value={opt} className="bg-[#171717] text-adam-text-primary">
                           {opt}
                         </option>
                       ))}
@@ -90,7 +90,7 @@ export function ParameterPanel({ parameters, values, onChange }: ParameterPanelP
                       type="text"
                       value={String(val)}
                       onChange={(e) => onChange(name, e.target.value)}
-                      className="w-20 border-b border-transparent bg-transparent font-mono text-[11.5px] text-adam-text-primary outline-none transition-colors placeholder:text-adam-text-tertiary hover:border-white/[0.12] focus:border-adam-blue/60"
+                      className="w-20 border-b border-transparent bg-transparent font-mono text-[11.5px] text-adam-text-primary outline-none transition-colors placeholder:text-adam-text-tertiary hover:border-white/[0.12] focus:border-adam-accent/60"
                     />
                   </div>
                 ) : (
@@ -98,7 +98,7 @@ export function ParameterPanel({ parameters, values, onChange }: ParameterPanelP
                     type="text"
                     value={String(val)}
                     onChange={(e) => onChange(name, e.target.value)}
-                    className="w-32 shrink-0 border-b border-transparent bg-transparent text-right text-[12px] text-adam-text-primary outline-none transition-colors placeholder:text-adam-text-tertiary hover:border-white/[0.12] focus:border-adam-blue/60"
+                    className="w-32 shrink-0 border-b border-transparent bg-transparent text-right text-[12px] text-adam-text-primary outline-none transition-colors placeholder:text-adam-text-tertiary hover:border-white/[0.12] focus:border-adam-accent/60"
                   />
                 )}
               </div>
@@ -206,7 +206,7 @@ function SliderParam({
           }}
           onBlur={commitValue}
           onKeyDown={handleKeyDown}
-          className="w-14 shrink-0 border-b border-transparent bg-transparent text-right font-mono text-[12px] tabular-nums text-adam-text-primary outline-none transition-colors hover:border-white/[0.12] focus:border-adam-blue/60"
+          className="w-14 shrink-0 border-b border-transparent bg-transparent text-right font-mono text-[12px] tabular-nums text-adam-text-primary outline-none transition-colors hover:border-white/[0.12] focus:border-adam-accent/60"
         />
       </div>
 
@@ -214,7 +214,7 @@ function SliderParam({
         <div className="absolute inset-0 flex items-center">
           <div className="h-0.5 w-full rounded-full bg-white/[0.08]">
             <div
-              className="h-full rounded-full bg-adam-blue/70 transition-all duration-75"
+              className="h-full rounded-full bg-adam-accent/70 transition-all duration-75"
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -229,7 +229,7 @@ function SliderParam({
           className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
         />
         <div
-          className="pointer-events-none absolute h-2.5 w-2.5 rounded-full bg-adam-blue transition-transform duration-150 group-hover/param:scale-125"
+          className="pointer-events-none absolute h-2.5 w-2.5 rounded-full bg-adam-accent transition-transform duration-150 group-hover/param:scale-125"
           style={{ left: `calc(${pct}% - 5px)` }}
         />
       </div>

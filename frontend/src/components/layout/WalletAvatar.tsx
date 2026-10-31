@@ -5,13 +5,13 @@ export function WalletAvatar({ address, size = 36 }: { address: string; size?: n
   const hash = address.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
 
   // Dynamic color selection based on address hash
-  const hairColors = ['#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#FF2E93'];
+  const hairColors = ['#F5A96F', '#F97316', '#FB923C', '#F59E0B', '#F9B584', '#EA580C'];
   const hairColor = hairColors[hash % hairColors.length];
 
-  const jacketColors = ['#1E293B', '#0F172A', '#111827', '#1F2937'];
+  const jacketColors = ['#1F1A17', '#171310', '#241C18', '#2A211B'];
   const jacketColor = jacketColors[(hash >> 1) % jacketColors.length];
 
-  const visorColors = ['#00A6FF', '#00E5FF', '#F59E0B', '#EC4899', '#10B981'];
+  const visorColors = ['#F9B584', '#F5A96F', '#FFB066', '#F59E0B', '#FB923C'];
   const visorColor = visorColors[(hash >> 2) % visorColors.length];
 
   // Decide decorations
@@ -22,12 +22,12 @@ export function WalletAvatar({ address, size = 36 }: { address: string; size?: n
     <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="rounded-xl overflow-hidden shrink-0 shadow-inner">
       <defs>
         <linearGradient id={`bgGrad-${hash}`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#1E1B4B" />
-          <stop offset="100%" stopColor="#090514" />
+          <stop offset="0%" stopColor="#1A0F08" />
+          <stop offset="100%" stopColor="#171717" />
         </linearGradient>
         <linearGradient id={`hairGrad-${hash}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={hairColor} />
-          <stop offset="100%" stopColor="#111827" />
+          <stop offset="100%" stopColor="#1A0F08" />
         </linearGradient>
       </defs>
 
@@ -67,16 +67,16 @@ export function WalletAvatar({ address, size = 36 }: { address: string; size?: n
       )}
 
       {/* Eyes */}
-      <circle cx="27" cy="30" r="2" fill="#1E293B" />
-      <circle cx="37" cy="30" r="2" fill="#1E293B" />
+      <circle cx="27" cy="30" r="2" fill="#2A1A10" />
+      <circle cx="37" cy="30" r="2" fill="#2A1A10" />
 
       {/* Smile */}
-      <path d="M30 36.5 Q32 38.5 34 36.5" stroke="#1E293B" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M30 36.5 Q32 38.5 34 36.5" stroke="#2A1A10" strokeWidth="1.5" strokeLinecap="round" />
 
       {/* Cyber Visor */}
       {hasVisor && (
         <g>
-          <path d="M16 27.5h32v4.5H16z" fill="#0F172A" opacity="0.6" />
+          <path d="M16 27.5h32v4.5H16z" fill="#1A0F08" opacity="0.6" />
           <rect x="18" y="26" width="28" height="7.5" rx="2.5" fill={visorColor} opacity="0.9" />
           <path d="M22 27.5h14v1.2H22z" fill="#FFF" opacity="0.5" />
         </g>
@@ -85,19 +85,19 @@ export function WalletAvatar({ address, size = 36 }: { address: string; size?: n
       {/* Headphones */}
       {hasHeadphones && (
         <g>
-          <path d="M19 19.5 Q32 10.5 45 19.5" stroke="#E2E8F0" strokeWidth="2.5" fill="none" opacity="0.9" />
-          <rect x="15" y="25" width="5.5" height="12" rx="2.5" fill="#334155" />
-          <rect x="43.5" y="25" width="5.5" height="12" rx="2.5" fill="#334155" />
-          <circle cx="17.75" cy="31" r="1.5" fill="#00A6FF" />
-          <circle cx="46.25" cy="31" r="1.5" fill="#00A6FF" />
+          <path d="M19 19.5 Q32 10.5 45 19.5" stroke="#F3E7DD" strokeWidth="2.5" fill="none" opacity="0.9" />
+          <rect x="15" y="25" width="5.5" height="12" rx="2.5" fill="#3A2A20" />
+          <rect x="43.5" y="25" width="5.5" height="12" rx="2.5" fill="#3A2A20" />
+          <circle cx="17.75" cy="31" r="1.5" fill="#F9B584" />
+          <circle cx="46.25" cy="31" r="1.5" fill="#F9B584" />
         </g>
       )}
 
       {/* Jacket */}
       <path d="M14 49c3-5 9-7 18-7s15 2 18 7v15H14V49z" fill={jacketColor} />
-      <path d="M26 42.5 L32 52 L38 42.5" stroke="#475569" strokeWidth="2" fill="none" />
-      <circle cx="21" cy="54" r="1.2" fill="#00E5FF" />
-      <circle cx="43" cy="54" r="1.2" fill="#00E5FF" />
+      <path d="M26 42.5 L32 52 L38 42.5" stroke="#4A3528" strokeWidth="2" fill="none" />
+      <circle cx="21" cy="54" r="1.2" fill="#F5A96F" />
+      <circle cx="43" cy="54" r="1.2" fill="#F5A96F" />
     </svg>
   );
 }

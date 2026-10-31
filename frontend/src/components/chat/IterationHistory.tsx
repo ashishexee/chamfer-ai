@@ -1,13 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  AlertTriangle,
-  Check,
-  Eye,
-  History,
-  Loader2,
-  Sparkles,
-  Wrench,
-} from "lucide-react";
+import { AlertTriangle, Eye, History, Loader2 } from "lucide-react";
 import type { Message, ModelIteration, ModelSource, RootHashData, TxSeqData } from "@/types";
 import { pickActiveIteration } from "@/lib/iterations";
 import { RootHashes, type UploadProgress } from "@/components/chat/RootHashes";
@@ -25,68 +17,61 @@ interface IterationHistoryProps {
   fallbackTxSeqs?: TxSeqData | null;
   previewId: string | null;
   previewLoadingId: string | null;
+  /** Session hydration still in flight — show an artifact skeleton. */
+  sessionLoading?: boolean;
   onPreview: (iteration: ModelIteration) => void;
   onGoBack: (iteration: ModelIteration) => void;
 }
 
-const SOURCE_META: Record<ModelSource, { label: string; icon: typeof Sparkles }> = {
-  generate: { label: "Generated", icon: Sparkles },
-  param_tweak: { label: "Param tweak", icon: Wrench },
-  restored: { label: "Restored", icon: History },
+const SOURCE_META: Record<ModelSource, string> = {
+  generate: "Generated",
+  param_tweak: "Param tweak",
+  restored: "Restored",
 };
 
-function timeAgo(iso?: string): string {
+// Per-button reveal, label BEFORE the icon: the label grows left while the
+// icon stays under the cursor. No shared group hover, so the neighbouring
+// action never expands and steals the click.
+const VERSION_ACTION_LABEL =
+  "max-w-0 overflow-hidden whitespace-nowrap text-right text-[10px] font-medium opacity-0 transition-[margin,max-width,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover/version-action:mr-1.5 group-hover/version-action:max-w-[64px] group-hover/version-action:opacity-100 group-focus/version-action:mr-1.5 group-focus/version-action:max-w-[64px] group-focus/version-action:opacity-100";
+
+/** Relative for recent versions, a short date once it is a week old. */
+function versionTime(iso?: string): string {
   if (!iso) return "";
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const diff = Date.now() - date.getTime();
+  if (diff >= 0 && diff < 7 * 24 * 60 * 60 * 1000) {
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  }
+
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleDateString(
+    undefined,
+    sameYear
+      ? { month: "short", day: "numeric" }
+      : { month: "short", day: "numeric", year: "numeric" },
+  );
 }
 
-function VersionThumbnails({ dimViews }: { dimViews?: Record<string, string> | null }) {
-  const views = useMemo(
-    () =>
-      Object.entries(dimViews || {})
-        .filter(([, svg]) => svg && !svg.includes("error"))
-        .slice(0, 3),
-    [dimViews],
-  );
-
-  if (views.length === 0) return null;
-
-  return (
-    <div className="mt-2 grid grid-cols-3 gap-1.5">
-      {views.map(([view, svg]) => (
-        <div
-          key={view}
-          className="overflow-hidden rounded-lg border border-white/[0.05] bg-adam-bg-dark/40"
-        >
-          <div
-            className="flex h-[62px] items-center justify-center p-1"
-            dangerouslySetInnerHTML={{ __html: svg }}
-          />
-          <div className="bg-adam-bg-dark/60 py-0.5 text-center text-[9px] uppercase tracking-wider text-adam-text-tertiary/80">
-            {view}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+function fullTime(iso?: string): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
 }
 
 /**
  * Inline iteration history for one assistant turn.
  *
- * - Every stored version is a chip; selecting one shows its 0G proof and a
- *   compact dimension-view preview.
- * - Preview loads the version into the main viewport without touching the
- *   working model.
- * - Go back rewinds history (destructive, confirmed by the parent dialog).
+ * A version is a quiet row: version, date, and the two actions that matter.
+ * Stored artifacts live underneath; provenance and status only appear when
+ * they are actionable (uploading / failed), never as decorative pills.
  */
 export function IterationHistory({
   message,
@@ -99,6 +84,7 @@ export function IterationHistory({
   fallbackTxSeqs,
   previewId,
   previewLoadingId,
+  sessionLoading,
   onPreview,
   onGoBack,
 }: IterationHistoryProps) {
@@ -106,6 +92,13 @@ export function IterationHistory({
 
   // No stored version yet (upload still running, or legacy message).
   if (iterations.length === 0) {
+    if (sessionLoading && isNewest) {
+      return (
+        <div className="mr-auto w-full max-w-[92%]">
+          <RootHashes hashes={null} loading className="mt-0" />
+        </div>
+      );
+    }
     const hashes = fallbackHashes ?? message.rootHashes ?? null;
     const hasLiveData = loading || !!progress || (isNewest && !!hashes);
     if (!hasLiveData && !hashes) return null;
@@ -117,14 +110,12 @@ export function IterationHistory({
           txSeqs={fallbackTxSeqs}
           loading={loading}
           progress={progress}
-          defaultExpanded={isNewest}
           className="mt-0"
         />
       </div>
     );
   }
 
-  const active = pickActiveIteration(iterations);
   const selected =
     iterations.find((it) => it.id === selectedId) ??
     iterations.find((it) => it.id === activeIterationId) ??
@@ -135,20 +126,37 @@ export function IterationHistory({
   // Legacy versions have no message anchor; refusing beats guessing an index.
   const isAnchored = !!selected.messageId;
   const canGoBack = isRestorable && isAnchored && !isCurrent;
-  const source = SOURCE_META[selected.source] || SOURCE_META.generate;
-  const SourceIcon = source.icon;
+  const sourceLabel = SOURCE_META[selected.source] ?? "Generated";
   const previewLoading = previewLoadingId === selected.id;
   const isPreviewing = previewId === selected.id;
+  const isUploading = selected.id === activeIterationId && loading;
+  const hasProgress =
+    isUploading && !!progress && Object.keys(progress).length > 0;
+
+  const artifactCount = useMemo(
+    () => Object.values(selected.rootHashes || {}).filter(Boolean).length,
+    [selected.rootHashes],
+  );
+  const showArtifacts = artifactCount > 0 || hasProgress;
+
+  // A pending row that is not actively uploading is a dead upload: say so
+  // plainly instead of leaving the user guessing why the actions are disabled.
+  const storageMessage =
+    selected.uploadStatus === "failed"
+      ? "Artifact storage failed"
+      : selected.uploadStatus === "pending" && !isUploading && artifactCount === 0
+        ? "Artifacts weren't stored"
+        : null;
 
   return (
-    <div className="mt-0.5 mr-auto w-full max-w-[92%]">
-      <div className="overflow-hidden rounded-2xl bg-[#1E2329]/90 ring-1 ring-white/[0.055] backdrop-blur-md">
-        {/* Version chips */}
+    <div className="mr-auto w-full max-w-[92%]">
+      <div className="relative overflow-hidden rounded-xl bg-[#202020]/90 ring-1 ring-white/[0.05] backdrop-blur-md">
+        {/* Version navigation, only when there is more than one version. */}
         {iterations.length > 1 && (
-          <div className="flex flex-wrap items-center gap-1 border-b border-white/[0.04] px-2.5 py-2">
-            <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-adam-text-tertiary/70">
-              Versions
-            </span>
+          <div
+            aria-label="Stored versions"
+            className="flex items-center gap-1 overflow-x-auto border-b border-white/[0.04] px-2 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
             {iterations.map((it) => {
               const isSelected = it.id === selected.id;
               const isActive = it.id === activeIterationId;
@@ -157,135 +165,123 @@ export function IterationHistory({
                   key={it.id}
                   type="button"
                   onClick={() => setSelectedId(it.id)}
-                  title={`v${it.version} · ${SOURCE_META[it.source]?.label ?? it.source} · ${timeAgo(it.createdAt)}`}
+                  title={`v${it.version} · ${SOURCE_META[it.source] ?? it.source} · ${versionTime(it.createdAt)}`}
                   className={cn(
-                    "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[11px] tabular-nums transition-colors",
+                    "inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 font-mono text-[10.5px] tabular-nums transition-colors",
                     isSelected
-                      ? "bg-adam-blue/15 text-adam-blue ring-1 ring-adam-blue/30"
-                      : "text-adam-text-tertiary hover:bg-white/[0.05] hover:text-adam-text-secondary",
-                    it.uploadStatus === "failed" && "text-red-400/80",
+                      ? "bg-white/[0.06] text-adam-text-primary"
+                      : "text-adam-text-tertiary hover:bg-white/[0.04] hover:text-adam-text-secondary",
+                    !isSelected && it.uploadStatus === "failed" && "text-red-400/80",
                   )}
                 >
                   v{it.version}
-                  {isActive && <span className="h-1 w-1 rounded-full bg-emerald-400" />}
+                  {isActive && <span className="h-1 w-1 rounded-full bg-adam-accent/80" />}
                 </button>
               );
             })}
-            <span className="ml-auto font-mono text-[10.5px] tabular-nums text-adam-text-tertiary/60">
-              {iterations.length} total
-            </span>
           </div>
         )}
 
-        {/* Selected version meta */}
-        <div className="flex items-center gap-2 px-3 py-2">
+        <div className={cn("bg-white/[0.015]", showArtifacts && "border-b border-white/[0.04]")}>
+          {/* One quiet row: version · date · actions. */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2">
+            <span className="shrink-0 rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-adam-text-primary/85">
+              v{selected.version}
+            </span>
+
           <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-medium ring-1",
-              isCurrent
-                ? "bg-emerald-500/10 text-emerald-300 ring-emerald-500/15"
-                : "bg-white/[0.04] text-adam-text-tertiary ring-white/[0.06]",
-            )}
+            className="text-[10.5px] text-adam-text-tertiary/75"
+            title={fullTime(selected.createdAt)}
           >
-            {isCurrent ? <Check className="h-2.5 w-2.5" /> : <SourceIcon className="h-2.5 w-2.5" />}
-            v{selected.version}
-            {isCurrent ? " · current" : ""}
+            {versionTime(selected.createdAt)}
           </span>
-          <span className="text-[11px] text-adam-text-tertiary">
-            {source.label}
-            {selected.createdAt ? ` · ${timeAgo(selected.createdAt)}` : ""}
-          </span>
-          {selected.uploadStatus === "failed" && (
-            <span className="ml-auto inline-flex items-center gap-1 text-[10.5px] text-red-400/90">
-              <AlertTriangle className="h-2.5 w-2.5" />
-              upload failed
+
+          {selected.source !== "generate" && (
+            <span className="text-[10px] text-adam-text-tertiary/55">
+              · {sourceLabel}
             </span>
           )}
-          {selected.uploadStatus === "pending" && (
-            <span
+
+          {isUploading && (
+            <span className="inline-flex items-center gap-1 text-[10px] text-adam-accent">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Storing artifacts…
+            </span>
+          )}
+
+          <div className="ml-auto flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => onPreview(selected)}
+              disabled={!isRestorable || previewLoading}
+              aria-label="Preview this version"
+              title={!isRestorable ? "No stored artifacts to preview" : undefined}
               className={cn(
-                "ml-auto inline-flex items-center gap-1 text-[10.5px]",
-                selected.id === activeIterationId && loading
-                  ? "text-adam-blue"
-                  : "text-amber-300/90",
+                "group/version-action flex h-6 items-center rounded-md px-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-35",
+                isPreviewing
+                  ? "bg-adam-accent/[0.08] text-adam-accent"
+                  : "text-adam-text-tertiary hover:bg-white/[0.05] hover:text-adam-text-primary",
               )}
             >
-              {selected.id === activeIterationId && loading ? (
-                <>
-                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                  uploading
-                </>
+              <span className={VERSION_ACTION_LABEL}>
+                {isPreviewing ? "Previewing" : "Preview"}
+              </span>
+              {previewLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <>
-                  <AlertTriangle className="h-2.5 w-2.5" />
-                  incomplete — no 0G data
-                </>
+                <Eye className="h-3.5 w-3.5" />
               )}
-            </span>
-          )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onGoBack(selected)}
+              disabled={!canGoBack}
+              aria-label={isCurrent ? "This version is active" : "Rollback to this version"}
+              title={
+                canGoBack
+                  ? undefined
+                  : isCurrent
+                    ? "This version is already active"
+                    : !isRestorable
+                      ? "No stored artifacts"
+                      : !isAnchored
+                        ? "Legacy version — cannot be rewound safely"
+                        : undefined
+              }
+              className="group/version-action flex h-6 items-center rounded-md px-1.5 text-adam-text-tertiary transition-colors hover:bg-white/[0.05] hover:text-adam-text-primary disabled:cursor-not-allowed disabled:opacity-35"
+            >
+              <span className={VERSION_ACTION_LABEL}>Rollback</span>
+              <History className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
-        {/* 0G proof for the selected version */}
-        <div className="px-1 pb-1">
+        {storageMessage && (
+          <div
+            className={cn(
+              "flex items-center gap-1.5 px-3 pb-2 text-[10px]",
+              selected.uploadStatus === "failed"
+                ? "text-red-300/75"
+                : "text-adam-accent/70",
+            )}
+            title={selected.uploadError || undefined}
+          >
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            <span className="min-w-0 truncate">{storageMessage}</span>
+          </div>
+        )}
+        </div>
+
+        {showArtifacts && (
           <RootHashes
             hashes={selected.rootHashes}
             txSeqs={selected.txSeqs ?? undefined}
-            // Only a live upload shows progress; stale pending rows have no
-            // artifacts and must not spin "Fetching proofs" forever.
-            loading={selected.id === activeIterationId ? loading : false}
-            progress={selected.id === activeIterationId ? progress : undefined}
-            defaultExpanded={isNewest || iterations.length > 1}
+            loading={isUploading}
+            progress={isUploading ? progress : undefined}
+            className="mt-0 bg-transparent ring-0"
           />
-        </div>
-
-        <VersionThumbnails dimViews={selected.dimViews} />
-
-        {/* Actions */}
-        <div className="grid grid-cols-2 gap-1.5 border-t border-white/[0.04] px-2.5 py-2">
-          <button
-            type="button"
-            onClick={() => onPreview(selected)}
-            disabled={!isRestorable || previewLoading}
-            className={cn(
-              "inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-medium transition-colors",
-              isPreviewing
-                ? "bg-adam-blue/15 text-adam-blue ring-1 ring-adam-blue/25"
-                : "bg-white/[0.035] text-adam-text-secondary hover:bg-white/[0.07] hover:text-white",
-              "disabled:cursor-not-allowed disabled:opacity-40",
-            )}
-            title="Render this version in the main viewport without changing the working model"
-          >
-            {previewLoading ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Eye className="h-3 w-3" />
-            )}
-            {isPreviewing ? "Previewing" : "Preview"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onGoBack(selected)}
-            disabled={!canGoBack}
-            className={cn(
-              "inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-medium transition-colors",
-              "bg-white/[0.035] text-adam-text-secondary hover:bg-amber-400/10 hover:text-amber-300",
-              "disabled:cursor-not-allowed disabled:opacity-40",
-            )}
-            title={
-              isCurrent
-                ? "This version is already active"
-                : !isRestorable
-                  ? "This version has no stored artifacts"
-                  : !isAnchored
-                    ? "Legacy version — not anchored to a chat message, so it cannot be rewound safely"
-                    : "Rewind the chat to this iteration (removes newer versions and later messages)"
-            }
-          >
-            <History className="h-3 w-3" />
-            {isCurrent ? "Current" : "Go back"}
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );

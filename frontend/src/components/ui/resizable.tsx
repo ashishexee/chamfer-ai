@@ -29,7 +29,7 @@ const ResizableHandle = ({ withHandle, className, children, ...props }: Resizabl
   <Separator
     className={cn(
       'group relative flex items-center justify-center z-20 cursor-col-resize',
-      'bg-adam-neutral-800/50 hover:bg-adam-neutral-600/50 data-[resize-handle-state=drag]:bg-adam-blue/40 transition-colors',
+      'bg-adam-neutral-800/50 hover:bg-adam-neutral-600/50 data-[resize-handle-state=drag]:bg-adam-accent/40 transition-colors',
       'after:absolute after:inset-y-0 after:left-1/2 after:w-5 after:-translate-x-1/2 after:content-[""]',
       !className && 'w-px',
       'data-[panel-group-direction=vertical]:h-px data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:after:h-5 data-[panel-group-direction=vertical]:after:w-full',

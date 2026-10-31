@@ -70,7 +70,7 @@ function ProviderRow({
         </span>
       )}
       {selected && (
-        <span className="shrink-0 text-adam-blue">
+        <span className="shrink-0 text-adam-accent">
           <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
         </span>
       )}
@@ -198,10 +198,10 @@ export function ProviderSelector({ selected, onSelect, requireVision = false }: 
         ref={buttonRef}
         onClick={() => (open ? close() : setOpen(true))}
         className={cn(
-          'h-8 flex items-center gap-1.5 bg-transparent text-xs transition-all font-normal shrink-0 outline-none',
+          'h-7 flex items-center gap-1.5 bg-transparent text-[11.5px] font-medium transition-all shrink-0 outline-none',
           open
             ? 'text-white'
-            : 'text-neutral-400 hover:text-white'
+            : 'text-adam-text-secondary hover:text-white'
         )}
       >
         <span>{selectedProvider?.name?.split(' (')[0] || 'Model'}</span>
@@ -223,7 +223,7 @@ export function ProviderSelector({ selected, onSelect, requireVision = false }: 
         >
           <div
             className={cn(
-              'w-[260px] max-h-[320px] overflow-y-auto rounded-xl border border-white/[0.06] bg-[#1E1F20] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.55)] chat-scroll',
+              'w-[260px] max-h-[320px] overflow-y-auto rounded-xl border border-white/[0.06] bg-[#202020] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.55)] chat-scroll',
               closing ? 'animate-menu-out' : 'animate-menu-in',
             )}
             style={{ transformOrigin: 'bottom left' }}

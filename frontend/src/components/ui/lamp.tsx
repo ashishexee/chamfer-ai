@@ -29,7 +29,7 @@ export const LampContainer = ({
             whileInView={{ opacity: 0.6, width: "24rem" }}
             transition={{ delay: 0.3, duration: 0.8, ease: "easeInOut" }}
             style={{ backgroundImage: `conic-gradient(var(--conic-position), var(--tw-gradient-stops))` }}
-            className="absolute top-0 right-1/2 h-56 overflow-visible w-[24rem] bg-gradient-conic from-adam-blue via-transparent to-transparent [--conic-position:from_70deg_at_center_top]"
+            className="absolute top-0 right-1/2 h-56 overflow-visible w-[24rem] bg-gradient-conic from-adam-accent via-transparent to-transparent [--conic-position:from_70deg_at_center_top]"
           >
             <div className="absolute w-full left-0 bg-adam-bg-secondary-dark h-40 bottom-0 z-20 [mask-image:linear-gradient(to_top,white,transparent)]" />
             <div className="absolute w-40 h-full left-0 bg-adam-bg-secondary-dark bottom-0 z-20 [mask-image:linear-gradient(to_right,white,transparent)]" />
@@ -41,7 +41,7 @@ export const LampContainer = ({
             whileInView={{ opacity: 0.6, width: "24rem" }}
             transition={{ delay: 0.3, duration: 0.8, ease: "easeInOut" }}
             style={{ backgroundImage: `conic-gradient(var(--conic-position), var(--tw-gradient-stops))` }}
-            className="absolute top-0 left-1/2 h-56 w-[24rem] bg-gradient-conic from-transparent via-transparent to-adam-blue [--conic-position:from_290deg_at_center_top]"
+            className="absolute top-0 left-1/2 h-56 w-[24rem] bg-gradient-conic from-transparent via-transparent to-adam-accent [--conic-position:from_290deg_at_center_top]"
           >
             <div className="absolute w-40 h-full right-0 bg-adam-bg-secondary-dark bottom-0 z-20 [mask-image:linear-gradient(to_left,white,transparent)]" />
             <div className="absolute w-full right-0 bg-adam-bg-secondary-dark h-40 bottom-0 z-20 [mask-image:linear-gradient(to_top,white,transparent)]" />
@@ -52,12 +52,12 @@ export const LampContainer = ({
           <div className="absolute top-1/2 z-50 h-48 w-full bg-transparent opacity-10 backdrop-blur-md"></div>
 
           {/* Glow orbs */}
-          <div className="absolute top-0 z-50 h-32 w-[20rem] -translate-y-1/2 rounded-full bg-adam-blue opacity-20 blur-3xl"></div>
+          <div className="absolute top-0 z-50 h-32 w-[20rem] -translate-y-1/2 rounded-full bg-adam-accent opacity-20 blur-3xl"></div>
           <motion.div
             initial={{ width: "6rem" }}
             whileInView={{ width: "12rem" }}
             transition={{ delay: 0.3, duration: 0.8, ease: "easeInOut" }}
-            className="absolute top-0 z-30 h-28 w-48 -translate-y-[4rem] rounded-full bg-adam-blue opacity-40 blur-2xl"
+            className="absolute top-0 z-30 h-28 w-48 -translate-y-[4rem] rounded-full bg-adam-accent opacity-40 blur-2xl"
           ></motion.div>
 
           {/* Top line */}
@@ -65,7 +65,7 @@ export const LampContainer = ({
             initial={{ width: "12rem" }}
             whileInView={{ width: "24rem" }}
             transition={{ delay: 0.3, duration: 0.8, ease: "easeInOut" }}
-            className="absolute top-0 z-50 h-px w-[24rem] -translate-y-[5rem] bg-adam-blue opacity-50"
+            className="absolute top-0 z-50 h-px w-[24rem] -translate-y-[5rem] bg-adam-accent opacity-50"
           ></motion.div>
 
           {/* Top mask */}

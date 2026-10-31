@@ -240,7 +240,7 @@ function AiStatusIcon({ state }: AiStatusIconProps) {
     switch (state) {
         case 'thinking':
             return (
-                <svg viewBox="0 0 24 24" width={18} height={18} className="text-adam-blue">
+                <svg viewBox="0 0 24 24" width={18} height={18} className="text-adam-accent">
                     <motion.path
                         d={SPARKLE_PATH}
                         fill="currentColor"
@@ -257,7 +257,7 @@ function AiStatusIcon({ state }: AiStatusIconProps) {
             )
         case 'researching':
             return (
-                <svg viewBox="0 0 24 24" width={18} height={18} className="text-adam-blue">
+                <svg viewBox="0 0 24 24" width={18} height={18} className="text-adam-accent">
                     <motion.g
                         animate={reduced ? undefined : { x: [0, 2, 0, -2, 0], y: [-2, 0, 2, 0, -2] }}
                         transition={loop({ duration: 2, repeat: Infinity, ease: 'linear' })}
@@ -269,7 +269,7 @@ function AiStatusIcon({ state }: AiStatusIconProps) {
             )
         case 'analyzing':
             return (
-                <svg viewBox="0 0 24 24" width={18} height={18} className="text-adam-blue">
+                <svg viewBox="0 0 24 24" width={18} height={18} className="text-adam-accent">
                     {[6, 12, 18].map((x, i) => (
                         <motion.line
                             key={x}
@@ -287,7 +287,7 @@ function AiStatusIcon({ state }: AiStatusIconProps) {
             )
         case 'writing':
             return (
-                <svg viewBox="0 0 24 24" width={18} height={18} className="text-adam-blue">
+                <svg viewBox="0 0 24 24" width={18} height={18} className="text-adam-accent">
                     <g transform="translate(-1.2 -2)">
                         <motion.path
                             {...STROKE}
@@ -352,11 +352,11 @@ function AiStatusIcon({ state }: AiStatusIconProps) {
 
 function Shimmer({ reduced, children }: { reduced: boolean; children: React.ReactNode }) {
     if (reduced) {
-        return <span className="text-adam-blue">{children}</span>
+        return <span className="text-adam-accent">{children}</span>
     }
     return (
         <motion.span
-            className="bg-clip-text text-transparent [--ai-status-ink:#00A6FF] [--ai-status-shine:#E6F7FF]"
+            className="bg-clip-text text-transparent [--ai-status-ink:#F9B584] [--ai-status-shine:#FFF6EE]"
             style={{ backgroundImage: SHIMMER, backgroundSize: '250% 100%' }}
             initial={{ backgroundPosition: '100% 0' }}
             animate={{ backgroundPosition: '0% 0' }}

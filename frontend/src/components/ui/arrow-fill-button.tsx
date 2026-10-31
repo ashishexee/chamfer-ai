@@ -1,7 +1,7 @@
 // Adapted from Hyperiux Vault (https://vault.hyperiux.com) — arrow-fill pill
 // button. Changes for this codebase: Tailwind v3 arbitrary-value syntax
 // (bg-[var(--x)]), fixed rem sizing tuned for the sidebar (the original uses
-// viewport units for full-width hero layouts), and adam-blue defaults.
+// viewport units for full-width hero layouts), and adam-accent defaults.
 // The fill/arrow animation machinery and touch pressed-state are unchanged.
 
 "use client";
@@ -36,14 +36,14 @@ function ArrowFillButton({
   href = DEFAULT_HREF,
   className = "",
 
-  bgColor = "#00A6FF",
+  bgColor = "#F9B584",
   textColor = "#ffffff",
 
   fillBgColor = "#ffffff",
-  fillTextColor = "#00A6FF",
+  fillTextColor = "#F9B584",
 
   hoverFillBgColor = "#ffffff",
-  hoverFillTextColor = "#00A6FF",
+  hoverFillTextColor = "#F9B584",
 
   arrowColor,
   hoverArrowColor,

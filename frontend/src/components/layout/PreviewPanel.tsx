@@ -18,6 +18,8 @@ interface PreviewPanelProps {
   paramUpdateKey: number;
   isParamUpdating: boolean;
   isCollapsed?: boolean;
+  /** Session hydration in flight — show a shimmer until the mesh arrives. */
+  isModelLoading?: boolean;
   /** When set, the viewport shows a stored iteration instead of the working model. */
   previewStlUrl?: string | null;
   previewLabel?: string | null;
@@ -70,6 +72,7 @@ export function PreviewPanel({
   paramUpdateKey,
   isParamUpdating,
   isCollapsed,
+  isModelLoading = false,
   previewStlUrl,
   previewLabel,
   previewLoading,
@@ -138,7 +141,7 @@ export function PreviewPanel({
   }, [fitToView, bounds]);
 
   return (
-    <div className="flex-1 flex h-full w-full items-center justify-center bg-[#1C1C1C] relative overflow-hidden">
+    <div className="flex-1 flex h-full w-full items-center justify-center bg-[#171717] relative overflow-hidden">
       {/* Content layer — hidden when collapsed */}
       <div className={cn("absolute inset-0", isCollapsed && "invisible")}>
         <Canvas
@@ -151,8 +154,8 @@ export function PreviewPanel({
           <CanvasSetup onReady={handleReady} />
           <ViewTracker onChange={setActiveView} />
 
-          <color attach="background" args={["#1C1C1C"]} />
-          <fog attach="fog" args={["#1C1C1C", 800, 100000000]} />
+          <color attach="background" args={["#171717"]} />
+          <fog attach="fog" args={["#171717", 800, 100000000]} />
 
           <ambientLight intensity={0.45} />
           <directionalLight
@@ -184,7 +187,22 @@ export function PreviewPanel({
 
         <div className="absolute inset-0 vignette" />
 
-        {!effectiveStlUrl && (
+        {isModelLoading && (
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+            <div className="relative h-48 w-48">
+              <div className="absolute inset-0 rounded-[32px] border border-white/[0.05] bg-white/[0.015]" />
+              <div className="absolute inset-8 rounded-[24px] border border-white/[0.04] bg-white/[0.01]" />
+              <div className="absolute inset-0 overflow-hidden rounded-[32px]">
+                <div className="absolute inset-y-0 left-0 w-full animate-shimmer bg-gradient-to-r from-transparent via-adam-accent/[0.12] to-transparent" />
+              </div>
+            </div>
+            <span className="mt-5 text-[11px] font-medium tracking-wide text-adam-text-tertiary">
+              Loading model…
+            </span>
+          </div>
+        )}
+
+        {!effectiveStlUrl && !isModelLoading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
             <div className="w-16 h-16 rounded-2xl glass-hud flex items-center justify-center mb-4">
               <svg
