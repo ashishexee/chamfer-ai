@@ -1,5 +1,16 @@
 import { useState } from 'react';
-import { User, Copy, Check, Eye, AlertTriangle, Pencil, RotateCcw, Shield, RefreshCw } from 'lucide-react';
+import {
+  Copy,
+  Check,
+  Eye,
+  AlertTriangle,
+  Pencil,
+  RotateCcw,
+  Shield,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { Message } from '@/types';
 import { getProviderDisplayName } from '@/lib/constants';
@@ -9,6 +20,7 @@ import { WorkflowTimeline } from './WorkflowTimeline';
 import { TeeVerifyModal } from './TeeVerifyModal';
 import { TeeVerifiedInfo } from './TeeVerifiedInfo';
 import { DimViews } from './DimViews';
+import { CollapsibleText, isLongMessage } from './CollapsibleText';
 import { cn } from '@/lib/utils';
 
 interface MessageBubbleProps {
@@ -276,6 +288,7 @@ function ZeroGMetadataPanel({ zeroG }: { zeroG: NonNullable<Message['zeroG']> })
 export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const [verifyOpen, setVerifyOpen] = useState(false);
+  const [promptExpanded, setPromptExpanded] = useState(false);
   const isUser = message.role === 'user';
   const isError = !!message.error;
   const isAssistant = message.role === 'assistant';
@@ -284,6 +297,9 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
   const hasSpecifications =
     (message.clarificationAnswers && message.clarificationAnswers.length > 0) ||
     (message.specifications && message.specifications.length > 0);
+  // Only plain user prompts collapse; specification cards keep their layout.
+  const canTogglePrompt =
+    isUser && !hasSpecifications && isLongMessage(message.content);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
@@ -303,7 +319,7 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: [0.25, 1, 0.5, 1] }}
-        className="space-y-1.5"
+        className="ml-auto w-full max-w-[86%] space-y-1.5"
       >
         {message.images && message.images.length > 0 && (
           <div className="flex gap-2 overflow-x-auto">
@@ -332,87 +348,105 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: [0.25, 1, 0.5, 1] }}
-      className={cn(
-        'group relative overflow-hidden rounded-xl border backdrop-blur-md shadow-[0_8px_24px_-16px_rgba(0,0,0,0.6)] transition-colors',
-        isUser
-          ? 'border-white/[0.06] bg-white/[0.02]'
-          : isError
-          ? 'border-red-500/15 bg-red-500/[0.04]'
-          : 'border-white/[0.06] bg-gradient-to-b from-white/[0.03] to-white/[0.015]'
-      )}
+      className={cn('group flex w-full', isUser ? 'justify-end' : 'justify-start')}
     >
-      {/* Header row */}
-      <div className="flex items-center gap-2.5 border-b border-white/[0.04] bg-white/[0.015] px-3.5 py-3">
-        {/* Avatar */}
-        <div className={cn(
-          'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ring-1',
-          isUser
-            ? 'bg-white/[0.06] text-adam-text-secondary ring-white/[0.06]'
-            : isError
-            ? 'bg-red-500/10 text-red-400 ring-red-500/15'
-            : 'bg-adam-blue/10 text-adam-blue ring-adam-blue/15'
-        )}>
-          {isUser
-            ? <User className="h-3.5 w-3.5" />
-            : isError
-            ? <AlertTriangle className="h-3.5 w-3.5" />
-            : <NutIcon className="h-3.5 w-3.5" />}
-        </div>
-
-        {/* Name + timestamp */}
-        <div className="flex flex-1 items-center gap-2 min-w-0">
-          <span className={cn(
-            'font-title text-[11px] font-bold tracking-[0.12em] truncate',
-            isUser ? 'text-white' : isError ? 'text-red-300' : 'text-white'
-          )}>
-            {isUser ? 'YOU' : message.provider ? getProviderDisplayName(message.provider).toUpperCase() : 'CHAMFER AI'}
-          </span>
-          {message.timestamp && (
-            <span className="shrink-0 rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] leading-none tabular-nums text-adam-text-tertiary ring-1 ring-white/[0.06]">
-              {formatTime(message.timestamp)}
-            </span>
+      <div className={cn('relative flex min-w-0 flex-col', isUser ? 'max-w-[86%]' : 'w-full max-w-[92%]')}>
+        <div
+          className={cn(
+            'relative overflow-hidden rounded-2xl px-3.5 py-3 backdrop-blur-md',
+            isUser
+              ? 'rounded-br-md bg-gradient-to-br from-[#1B4558] to-[#153847] text-white ring-1 ring-inset ring-white/[0.07] shadow-[0_12px_28px_-20px_rgba(0,0,0,0.85)]'
+              : isError
+                ? 'rounded-bl-md bg-red-500/[0.06] ring-1 ring-red-500/15'
+                : 'rounded-bl-md bg-[#1E2329]/90 ring-1 ring-white/[0.055]',
           )}
-          {!isUser && !isError && message.content && !message.bestEffort && (
-            <span className="hidden rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-emerald-300 ring-1 ring-emerald-500/15 group-hover:inline-flex">
-              {message.visionVerified ? 'vision-verified' : 'generated'}
-            </span>
-          )}
-        </div>
+        >
+          {/* Assistant header — no box, just identity + actions */}
+          {!isUser && (
+            <div className="mb-2 flex items-center gap-2.5">
+              <div className={cn(
+                'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ring-1',
+                isError
+                  ? 'bg-red-500/10 text-red-400 ring-red-500/15'
+                  : 'bg-adam-blue/10 text-adam-blue ring-adam-blue/15'
+              )}>
+                {isError
+                  ? <AlertTriangle className="h-3.5 w-3.5" />
+                  : <NutIcon className="h-3.5 w-3.5" />}
+              </div>
 
-        {/* Action buttons */}
-        {hasContent && (
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
-            <button
-              onClick={() => onEdit(index)}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-adam-text-tertiary hover:text-adam-blue hover:bg-adam-blue/10 transition-colors"
-              title="Edit this design"
-            >
-              <Pencil className="h-3 w-3" />
-            </button>
-            {isBestEffort && (
+              <div className="flex flex-1 items-center gap-2 min-w-0">
+                <span className={cn(
+                  'font-title text-[11px] font-bold tracking-[0.12em] truncate',
+                  isError ? 'text-red-300' : 'text-white'
+                )}>
+                  {message.provider ? getProviderDisplayName(message.provider).toUpperCase() : 'CHAMFER AI'}
+                </span>
+                {message.timestamp && (
+                  <span className="shrink-0 text-[10px] leading-none tabular-nums text-adam-text-tertiary/70">
+                    {formatTime(message.timestamp)}
+                  </span>
+                )}
+                {!isError && message.content && !message.bestEffort && (
+                  <span className="hidden rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-medium tracking-wide text-emerald-300 ring-1 ring-emerald-500/15 group-hover:inline-flex">
+                    {message.visionVerified ? 'vision-verified' : 'generated'}
+                  </span>
+                )}
+              </div>
+
+              {/* Action buttons */}
+              {hasContent && (
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                  <button
+                    onClick={() => onEdit(index)}
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-adam-text-tertiary hover:text-adam-blue hover:bg-adam-blue/10 transition-colors"
+                    title="Edit this design"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                  {isBestEffort && (
+                    <button
+                      onClick={() => onRetry(index)}
+                      className="flex h-6 w-6 items-center justify-center rounded-md text-adam-text-tertiary hover:text-yellow-400 hover:bg-yellow-400/10 transition-colors"
+                      title="Retry generation"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                    </button>
+                  )}
+                  <button
+                    onClick={handleCopy}
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-adam-text-tertiary hover:text-adam-text-secondary hover:bg-white/[0.04] transition-colors"
+                    title={copied ? 'Copied' : 'Copy message'}
+                  >
+                    {copied
+                      ? <Check className="h-3 w-3 text-emerald-400" />
+                      : <Copy className="h-3 w-3" />}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Long-prompt toggle — icon only, top-right of the user bubble */}
+          {isUser && canTogglePrompt && (
+            <div className="mb-1 flex justify-end">
               <button
-                onClick={() => onRetry(index)}
-                className="flex h-6 w-6 items-center justify-center rounded-md text-adam-text-tertiary hover:text-yellow-400 hover:bg-yellow-400/10 transition-colors"
-                title="Retry generation"
+                type="button"
+                onClick={() => setPromptExpanded((v) => !v)}
+                aria-expanded={promptExpanded}
+                aria-label={promptExpanded ? 'Collapse message' : 'Expand message'}
+                title={promptExpanded ? 'Show less' : 'Show full message'}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white/50 transition-colors hover:bg-white/[0.08] hover:text-white"
               >
-                <RotateCcw className="h-3 w-3" />
+                {promptExpanded
+                  ? <ChevronUp className="h-3.5 w-3.5" />
+                  : <ChevronDown className="h-3.5 w-3.5" />}
               </button>
-            )}
-            <button
-              onClick={handleCopy}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-adam-text-tertiary hover:text-adam-text-secondary hover:bg-white/[0.04] transition-colors"
-              title={copied ? 'Copied' : 'Copy message'}
-            >
-              {copied
-                ? <Check className="h-3 w-3 text-emerald-400" />
-                : <Copy className="h-3 w-3" />}
-            </button>
-          </div>
-        )}
-      </div>
+            </div>
+          )}
 
-      {/* Content */}
-      <div className="px-3.5 pb-3.5 pt-3">
+          {/* Content */}
+          <div className={cn(isUser && 'space-y-2')}>
         {/* User images */}
         {isUser && message.images && message.images.length > 0 && (
           <div className="flex gap-2 mb-2 overflow-x-auto">
@@ -421,7 +455,7 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
                 key={i}
                 src={img}
                 alt={`Reference ${i + 1}`}
-                className="w-20 h-20 rounded-lg object-cover border border-adam-neutral-700/30"
+                className="w-20 h-20 rounded-lg object-cover ring-1 ring-white/15"
               />
             ))}
           </div>
@@ -435,12 +469,22 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
             is exactly the complaint in the screenshot. Hide it when
             bestEffort is set so the Workflow sits at the top. */}
         {!(isAssistant && message.bestEffort) && (
-          <div className={cn(
-            'text-sm leading-relaxed',
-            isError ? 'text-red-400/90' : 'text-adam-text-primary/95'
-          )}>
-            {message.content}
-          </div>
+          isUser ? (
+            <CollapsibleText
+              text={message.content}
+              className="text-sm leading-relaxed text-white/90"
+              fadeClassName="from-[#153847] via-[#153847]/85 to-transparent"
+              expanded={canTogglePrompt ? promptExpanded : undefined}
+              onToggle={canTogglePrompt ? () => setPromptExpanded((v) => !v) : undefined}
+            />
+          ) : (
+            <div className={cn(
+              'text-sm leading-relaxed',
+              isError ? 'text-red-400/90' : 'text-adam-text-primary/95'
+            )}>
+              {message.content}
+            </div>
+          )
         )}
 
         {/* Workflow Timeline */}
@@ -555,6 +599,17 @@ export function MessageBubble({ message, index, onEdit, onRetry }: MessageBubble
             expectedSignedTextSha256={message.zeroG.teeReceipt?.signedTextSha256}
           />
         )}
+          </div>
+
+          {/* User bubble footer */}
+          {isUser && message.timestamp && (
+            <div className="mt-1.5 flex justify-end">
+              <span className="text-[9.5px] tabular-nums text-white/40">
+                {formatTime(message.timestamp)}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
     </motion.div>
   );

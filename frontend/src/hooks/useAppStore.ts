@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type {
   Parameter,
   ParameterSchema,
@@ -9,8 +9,10 @@ import type {
   SessionListItem,
   Specification,
   ReasoningEffort,
+  ModelIteration,
+  IterationContents,
 } from "@/types";
-import type { RootHashData, TxSeqData } from "@/components/chat/RootHashes";
+import type { RootHashData, TxSeqData } from "@/types";
 import { API_URL, CHAT_ENDPOINTS, MODEL_ENDPOINTS } from "@/lib/constants";
 import { useAuth } from "@/hooks/useAuth";
 import { useAutoScroll } from "@/hooks/useAutoScroll";
@@ -54,6 +56,18 @@ export function useAppStore() {
   const [latestMessageOrder, setLatestMessageOrder] = useState<number | null>(
     null,
   );
+  /** Always-current session id for async uploads that outlive a chat switch. */
+  const chatSessionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    chatSessionIdRef.current = chatSessionId;
+  }, [chatSessionId]);
+
+  /**
+   * Bumped only when the user actually switches chats / starts a new one.
+   * Message component keys use it, so the null→id assignment on the first save
+   * does not remount (and re-animate) the whole transcript.
+   */
+  const [chatMountKey, setChatMountKey] = useState(0);
 
   // ── Edit state ──
   const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(
@@ -80,6 +94,26 @@ export function useAppStore() {
   const [hasUnsavedParamIteration, setHasUnsavedParamIteration] =
     useState(false);
   const [isStoringIteration, setIsStoringIteration] = useState(false);
+  /** 0G uploads in flight, scoped per chat (auto generation + manual stores). */
+  const uploadsBySessionRef = useRef<Map<string, number>>(new Map());
+  const [isUploading, setIsUploading] = useState(false);
+  const beginUpload = useCallback((sessionId: string) => {
+    const map = uploadsBySessionRef.current;
+    map.set(sessionId, (map.get(sessionId) ?? 0) + 1);
+    setIsUploading(true);
+  }, []);
+  const endUpload = useCallback((sessionId: string) => {
+    const map = uploadsBySessionRef.current;
+    const next = (map.get(sessionId) ?? 0) - 1;
+    if (next <= 0) map.delete(sessionId);
+    else map.set(sessionId, next);
+    if (map.size === 0) setIsUploading(false);
+  }, []);
+  /** True only if the given chat has its own upload running. */
+  const isSessionUploading = useCallback((sessionId: string | null) => {
+    if (!sessionId) return false;
+    return (uploadsBySessionRef.current.get(sessionId) ?? 0) > 0;
+  }, []);
   const [modelStorageStatus, setModelStorageStatus] = useState<string | null>(
     null,
   );
@@ -90,6 +124,19 @@ export function useAppStore() {
     string,
     { status: string; rootHash?: string; txSeq?: number }
   > | null>(null);
+
+  // ── Iteration history (append-only versions) ──
+  const [iterations, setIterations] = useState<ModelIteration[]>([]);
+  const [iterationsLoading, setIterationsLoading] = useState(false);
+  const [activeIterationId, setActiveIterationId] = useState<string | null>(null);
+  /** Non-destructive preview loaded into the main viewport. */
+  const [previewIteration, setPreviewIteration] = useState<IterationContents | null>(null);
+  const [previewStlUrl, setPreviewStlUrl] = useState<string | null>(null);
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+  /** Set when the user asks to go back; the confirm dialog reads it. */
+  const [rewindTarget, setRewindTarget] = useState<ModelIteration | null>(null);
+  const [rewinding, setRewinding] = useState(false);
+  const [iterationError, setIterationError] = useState<string | null>(null);
 
   // ── Panel UI state ──
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -123,6 +170,7 @@ export function useAppStore() {
     currentCode,
     stlObjectUrl,
     onStlUpdate: setStlUrl,
+    onStlObjectUrlUpdate: setStlObjectUrl,
     onStepUpdate: setStepBase64,
     onGlbBase64Update: setGlbBase64,
     onStlBase64Update: setStlBase64,
@@ -171,10 +219,13 @@ export function useAppStore() {
     setSessionId,
     chatSessionId,
     setChatSessionId,
+    chatMountKey,
+    setChatMountKey,
     chatSessions,
     setChatSessions,
     latestMessageOrder,
     setLatestMessageOrder,
+    chatSessionIdRef,
 
     // Edit
     editingMessageIndex,
@@ -211,6 +262,10 @@ export function useAppStore() {
     setHasUnsavedParamIteration,
     isStoringIteration,
     setIsStoringIteration,
+    isUploading,
+    isSessionUploading,
+    beginUpload,
+    endUpload,
     modelStorageStatus,
     setModelStorageStatus,
     rootHashes,
@@ -221,6 +276,26 @@ export function useAppStore() {
     setTxSeqs,
     uploadProgress,
     setUploadProgress,
+
+    // Iteration history
+    iterations,
+    setIterations,
+    iterationsLoading,
+    setIterationsLoading,
+    activeIterationId,
+    setActiveIterationId,
+    previewIteration,
+    setPreviewIteration,
+    previewStlUrl,
+    setPreviewStlUrl,
+    previewLoadingId,
+    setPreviewLoadingId,
+    rewindTarget,
+    setRewindTarget,
+    rewinding,
+    setRewinding,
+    iterationError,
+    setIterationError,
 
     // Panel UI
     sidebarOpen,

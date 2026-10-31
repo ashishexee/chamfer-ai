@@ -6,6 +6,8 @@ interface UseParamUpdateOptions {
   currentCode: string;
   stlObjectUrl: string | null;
   onStlUpdate: (url: string) => void;
+  /** Keep the store's revocable object URL in sync with the live URL. */
+  onStlObjectUrlUpdate?: (url: string | null) => void;
   onStepUpdate: (base64: string) => void;
   onGlbBase64Update?: (base64: string) => void;
   onStlBase64Update: (base64: string) => void;
@@ -22,6 +24,7 @@ export function useParamUpdate({
   currentCode,
   stlObjectUrl,
   onStlUpdate,
+  onStlObjectUrlUpdate,
   onStepUpdate,
   onGlbBase64Update,
   onStlBase64Update,
@@ -82,7 +85,10 @@ export function useParamUpdate({
           const blob = new Blob([bytes], { type: 'application/octet-stream' });
           const url = URL.createObjectURL(blob);
           if (stlObjectUrl) onRevokeUrl(stlObjectUrl);
+          // Both states must point at the live blob so the next update can
+          // revoke it instead of leaking one URL per slider change.
           onStlUpdate(url);
+          onStlObjectUrlUpdate?.(url);
           onStlBase64Update(data.stlBase64);
         }
 
@@ -123,6 +129,7 @@ export function useParamUpdate({
     stlObjectUrl,
     updateParamValues,
     onStlUpdate,
+    onStlObjectUrlUpdate,
     onStepUpdate,
     onGlbBase64Update,
     onStlBase64Update,

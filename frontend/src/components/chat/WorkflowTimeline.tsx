@@ -6,7 +6,24 @@ import {
 } from 'lucide-react';
 import type { WorkflowStep } from '@/types';
 import { STEP_RANK } from '@/lib/pipelineSteps';
+import { AiStatus, type AiStatusState } from '@/components/chat/AiStatus';
 import { cn } from '@/lib/utils';
+
+/** Map a pipeline stage onto one of the animated status states. */
+const STATUS_FOR_STEP: Record<string, AiStatusState> = {
+  clarify: 'thinking',
+  analyze: 'thinking',
+  generate: 'writing',
+  syntax: 'analyzing',
+  execute: 'analyzing',
+  inspect: 'analyzing',
+  snapshots: 'analyzing',
+  dimviews: 'analyzing',
+  'tee-verify': 'researching',
+  repair: 'thinking',
+  vision: 'researching',
+  deliver: 'writing',
+};
 
 const ICONS: Record<string, LucideIcon> = {
   search: Search,
@@ -55,31 +72,37 @@ export function WorkflowTimeline({ steps, reasoning }: WorkflowTimelineProps) {
   const hasRealReasoning = reasoning && reasoning.trim().length > 0;
   const isWorking = displaySteps.some(s => s.status === 'running');
 
+  const runningStep = displaySteps.find(s => s.status === 'running');
+  const hasError = allSteps.some(s => s.status === 'error');
+  const stepTimes = allSteps
+    .map(s => s.timestamp)
+    .filter((t): t is number => typeof t === 'number');
+  // Completed turns get a "Worked for 12s" summary from the step timestamps.
+  const elapsedSeconds =
+    stepTimes.length > 1
+      ? Math.max(0, Math.round((Math.max(...stepTimes) - Math.min(...stepTimes)) / 1000))
+      : undefined;
+
+  const statusState: AiStatusState = runningStep
+    ? (STATUS_FOR_STEP[runningStep.id] ?? 'thinking')
+    : hasError
+      ? 'error'
+      : 'done';
+
   return (
-    <div className="rounded-xl border border-adam-neutral-700/30 bg-[#161616]/60 overflow-hidden">
-      {/* Header */}
-      <div className="px-3 py-2 border-b border-adam-neutral-700/20 bg-gradient-to-r from-white/[0.02] to-transparent">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex gap-0.5">
-              {displaySteps.map(s => (
-                <div
-                  key={s.id}
-                  className={cn(
-                    'h-0.5 w-3 rounded-full transition-colors duration-300',
-                    s.status === 'done' ? 'bg-emerald-400/60' :
-                    s.status === 'error' ? 'bg-red-400/60' :
-                    s.status === 'running' ? 'bg-adam-blue/60' : 'bg-adam-neutral-700/40'
-                  )}
-                />
-              ))}
-            </div>
-            <span className="font-title font-bold text-adam-text-tertiary uppercase tracking-widest">Workflow</span>
-          </div>
-          <span className="text-[10px] text-adam-text-tertiary tabular-nums">
-            {doneCount}/{revealedCount}
-          </span>
-        </div>
+    <div className="overflow-hidden rounded-xl border border-white/[0.05] bg-white/[0.02]">
+      {/* Animated status row — the same component used while streaming and after a reload */}
+      <div className="flex items-center justify-between gap-3 border-b border-white/[0.04] px-3 py-2">
+        <AiStatus
+          state={statusState}
+          label={runningStep?.label}
+          detail={runningStep?.detail || undefined}
+          elapsed={runningStep ? undefined : elapsedSeconds}
+          className="h-7 min-w-0 text-[12.5px]"
+        />
+        <span className="shrink-0 font-mono text-[10px] tabular-nums text-adam-text-tertiary/60">
+          {doneCount}/{revealedCount}
+        </span>
       </div>
 
       {/* Steps */}

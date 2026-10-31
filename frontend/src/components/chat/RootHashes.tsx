@@ -3,21 +3,10 @@ import { Check, ChevronRight, Copy, ExternalLink, Download, Loader2 } from 'luci
 import { API_URL } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 
-export interface RootHashData {
-  code?: string;
-  stl?: string;
-  step?: string;
-  glb?: string;
-  dimViews?: string;
-}
+import type { RootHashData, TxSeqData } from '@/types';
 
-export interface TxSeqData {
-  code?: number;
-  stl?: number;
-  step?: number;
-  glb?: number;
-  dimViews?: number;
-}
+// Re-exported for the existing imports that point at this module.
+export type { RootHashData, TxSeqData };
 
 export interface UploadProgress {
   [key: string]: { status: string; rootHash?: string; txSeq?: number };
@@ -30,6 +19,8 @@ interface RootHashesProps {
   progress?: UploadProgress | null;
   /** Initial expanded state — caller varies it per message (newest open, history collapsed). */
   defaultExpanded?: boolean;
+  /** Override the card's outer spacing (defaults to mt-3). */
+  className?: string;
 }
 
 const EXPLORER_BASE = 'https://storagescan-galileo.0g.ai/submission/';
@@ -82,8 +73,13 @@ function HashRow({ label, hash, txSeq, ext, isBase64 }: {
       const a = document.createElement('a');
       a.href = url;
       a.download = `model.${ext}`;
+      a.style.display = 'none';
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      // Revoke after the click has been processed; revoking in the same task
+      // can abort the download in some browsers.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (err) {
       console.error('[0G] Download failed:', err);
     } finally {
@@ -94,14 +90,14 @@ function HashRow({ label, hash, txSeq, ext, isBase64 }: {
   const { start, end } = truncateHashParts(hash);
 
   return (
-    <div className="flex items-center gap-3 px-3.5 py-1.5 transition-colors hover:bg-white/[0.02]">
-      <span className="w-16 shrink-0 text-[10px] font-medium uppercase tracking-wider text-adam-text-tertiary/80">
+    <div className="flex items-center gap-3 px-3.5 py-2 transition-colors hover:bg-white/[0.02]">
+      <span className="w-16 shrink-0 text-[11px] font-medium uppercase tracking-wide text-adam-text-tertiary/80">
         {label}
       </span>
 
-      <span className="flex min-w-0 flex-1 items-center gap-1.5 font-mono text-[10.5px] tabular-nums">
+      <span className="flex min-w-0 flex-1 items-center gap-1.5 font-mono text-[11.5px] tabular-nums">
         <span className="truncate text-adam-text-secondary/80">{start}</span>
-        <span className="shrink-0 select-none text-[9px] tracking-[0.2em] text-white/15">···</span>
+        <span className="shrink-0 select-none text-[10px] tracking-[0.2em] text-white/15">···</span>
         {end && <span className="shrink-0 text-adam-text-secondary/80">{end}</span>}
       </span>
 
@@ -142,13 +138,13 @@ function HashRow({ label, hash, txSeq, ext, isBase64 }: {
 /** In-flight row — a file that hasn't landed on 0G yet. */
 function ProgressRow({ label, status }: { label: string; status: string }) {
   return (
-    <div className="flex items-center gap-3 px-3.5 py-1.5">
-      <span className="w-16 shrink-0 text-[10px] font-medium uppercase tracking-wider text-adam-text-tertiary/80">
+    <div className="flex items-center gap-3 px-3.5 py-2">
+      <span className="w-16 shrink-0 text-[11px] font-medium uppercase tracking-wide text-adam-text-tertiary/80">
         {label}
       </span>
       <span
         className={cn(
-          'flex-1 text-[11px]',
+          'flex-1 text-[11.5px]',
           status === 'uploading' ? 'text-adam-blue' : 'text-adam-text-tertiary/70',
         )}
       >
@@ -166,17 +162,20 @@ function ProgressRow({ label, status }: { label: string; status: string }) {
   );
 }
 
-export function RootHashes({ hashes, txSeqs, loading, progress, defaultExpanded = true }: RootHashesProps) {
+export function RootHashes({ hashes, txSeqs, loading, progress, defaultExpanded = true, className }: RootHashesProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const isUploading = loading && !!progress && Object.keys(progress).length > 0;
-  const cardCls =
-    'mt-3 overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-md shadow-[0_8px_24px_-14px_rgba(0,0,0,0.6)]';
+  // Matches the assistant bubble surface exactly.
+  const cardCls = cn(
+    'overflow-hidden rounded-2xl bg-[#1E2329]/90 ring-1 ring-white/[0.055] backdrop-blur-md shadow-[0_8px_24px_-16px_rgba(0,0,0,0.6)]',
+    className ?? 'mt-3',
+  );
 
   // Proofs are being fetched but no per-file progress has arrived yet
   if (loading && !isUploading) {
     return (
       <div className={cardCls}>
-        <div className="flex items-center gap-1.5 px-3.5 py-2 text-[11px] font-medium text-adam-text-secondary">
+        <div className="flex items-center gap-1.5 px-3.5 py-2.5 text-[12px] font-medium text-adam-text-secondary">
           <Loader2 className="h-3 w-3 animate-spin text-adam-blue" />
           Fetching proofs from 0G…
         </div>
@@ -214,11 +213,11 @@ export function RootHashes({ hashes, txSeqs, loading, progress, defaultExpanded 
             expanded ? 'rotate-90' : ''
           }`}
         />
-        <span className="flex flex-1 items-center gap-1.5 text-left text-[11px] font-medium text-adam-text-secondary">
+        <span className="flex flex-1 items-center gap-1.5 text-left text-[12.5px] font-medium text-adam-text-secondary">
           {inFlight && <Loader2 className="h-3 w-3 animate-spin text-adam-blue" />}
           {inFlight ? 'Uploading to 0G' : 'Stored on 0G'}
         </span>
-        <span className="font-mono text-[10.5px] tabular-nums text-adam-text-tertiary">
+        <span className="font-mono text-[11.5px] tabular-nums text-adam-text-tertiary">
           {inFlight
             ? `${storedRows.length}/${FILE_META.length}`
             : `${storedRows.length} ${storedRows.length === 1 ? 'file' : 'files'}`}

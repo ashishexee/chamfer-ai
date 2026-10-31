@@ -1,23 +1,29 @@
 import { useCallback, useEffect } from "react";
 import type { AppStore } from "@/hooks/useAppStore";
-import type { ParameterSchema } from "@/types";
+import type { ModelIteration } from "@/types";
 import { API_URL, CHAT_ENDPOINTS, MODEL_ENDPOINTS } from "@/lib/constants";
+import {
+  attachIterationsToMessages,
+  normalizeParameters,
+  parameterDefaults,
+} from "@/lib/iterations";
 
 /**
  * Handles chat session CRUD — save, load, list, and auth verification.
- * Extracted from the monolithic App.tsx.
+ * A load restores the FULL interface: every message keeps its reasoning,
+ * workflow steps, 0G/TEE metadata, snapshots, dim views and images, and every
+ * stored iteration is attached to the turn that produced it.
  */
-export function useChatSessions(
-  store: AppStore,
-  uploadModelTo0G: (model: any) => Promise<any>,
-) {
+export function useChatSessions(store: AppStore) {
   const {
     auth,
     authHeaders,
     messages,
     setMessages,
     chatSessionId,
+    chatSessionIdRef,
     setChatSessionId,
+    setChatMountKey,
     chatSessions,
     setChatSessions,
     setLatestMessageOrder,
@@ -34,23 +40,27 @@ export function useChatSessions(
     setRootHashes,
     setTxSeqs,
     setRootHashesLoading,
+    setUploadProgress,
     setInspection,
     setModelStorageStatus,
     setHasUnsavedParamIteration,
+    setIterations,
+    setIterationsLoading,
+    setActiveIterationId,
+    setPreviewIteration,
+    setPreviewStlUrl,
+    setPreviewLoadingId,
+    setRewindTarget,
+    setIterationError,
     isGenerating,
     stlObjectUrl,
-    setUploadProgress,
-    assistantMessageIdRef,
   } = store;
 
   const saveCurrentSession = useCallback(() => {
     if (!auth.isConnected || messages.length === 0) return;
-    const allMsgs = messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-      specifications: m.specifications,
-      provider: m.provider,
-    }));
+    // Persist the full message payload (minus derived model pointers, which the
+    // server strips) so switching chats never loses reasoning or metadata.
+    const allMsgs = messages.map((m) => ({ ...m }));
     fetch(`${API_URL}${CHAT_ENDPOINTS.SAVE}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
@@ -70,109 +80,134 @@ export function useChatSessions(
         saveCurrentSession();
       }
       try {
-        const res = await fetch(
-          `${API_URL}${CHAT_ENDPOINTS.HISTORY(sessionId)}`,
-          {
-            headers: { Authorization: `Bearer ${auth.address || ""}` },
-          },
-        );
+        const res = await fetch(`${API_URL}${CHAT_ENDPOINTS.HISTORY(sessionId)}`, {
+          headers: { Authorization: `Bearer ${auth.address || ""}` },
+        });
         if (!res.ok) return;
         const data = await res.json();
         const { session } = data;
         if (!session) return;
+
+        // ── Reset transient state before hydrating ──
         setChatSessionId(session.id);
-        setMessages(session.messages || []);
+        // Sync the upload guard immediately: any in-flight upload from the
+        // previous chat must stop writing as soon as this render commits.
+        chatSessionIdRef.current = session.id;
+        // Remount message components for the new chat (fresh collapse/TEE state).
+        setChatMountKey((k) => k + 1);
         setCurrentCode("");
         setLatestMessageOrder(null);
         setHasUnsavedParamIteration(false);
         setModelStorageStatus(null);
-        setParameters(session.parameters || {});
-        if (session.parameters && Object.keys(session.parameters).length > 0) {
-          const vals: Record<string, number> = {};
-          Object.entries(session.parameters as Record<string, ParameterSchema>).forEach(([name, schema]) => {
-            if (typeof schema.default === "number") {
-              vals[name] = schema.default;
-            }
-          });
-          setParamValues(vals);
-        }
         setSnapshots({});
         setDimViews({});
         setStlUrl(null);
+        if (stlObjectUrl) URL.revokeObjectURL(stlObjectUrl);
+        setStlObjectUrl(null);
         setStlBase64(undefined);
         setStepBase64(undefined);
         setGlbBase64(undefined);
         setRootHashes(null);
         setTxSeqs(null);
         setRootHashesLoading(false);
+        // An upload abandoned mid-flight must not paint its per-file rows into
+        // the chat we just opened.
+        setUploadProgress(null);
+        setActiveIterationId(null);
+        setIterationError(null);
+        setRewindTarget(null);
+        setPreviewIteration(null);
+        setPreviewStlUrl(null);
+        setPreviewLoadingId(null);
 
+        // ── Warm up the iteration history ──
+        setIterationsLoading(true);
+        let iterations = (session.iterations || []) as ModelIteration[];
+        if (!Array.isArray(session.iterations)) {
+          try {
+            const iterRes = await fetch(
+              `${API_URL}${MODEL_ENDPOINTS.SESSION_ITERATIONS(session.id)}`,
+              { headers: { Authorization: `Bearer ${auth.address || ""}` } },
+            );
+            if (iterRes.ok) {
+              const iterData = await iterRes.json();
+              iterations = (iterData.iterations || []) as ModelIteration[];
+            }
+          } catch {
+            iterations = [];
+          }
+        }
+        setIterations(iterations);
+        setIterationsLoading(false);
+
+        // Full-fidelity messages + versions attached to their turn.
+        setMessages(attachIterationsToMessages(session.messages || [], iterations));
+
+        const sessionParams = normalizeParameters(session.parameters);
+        setParameters(sessionParams);
+        setParamValues(parameterDefaults(sessionParams));
+
+        // ── Restore the working model (newest complete version) ──
         try {
           const modelRes = await fetch(
             `${API_URL}${MODEL_ENDPOINTS.LATEST_FOR_SESSION(session.id)}`,
-            {
-              headers: { Authorization: `Bearer ${auth.address || ""}` },
-            },
+            { headers: { Authorization: `Bearer ${auth.address || ""}` } },
           );
           if (modelRes.ok) {
             const modelData = await modelRes.json();
             const model = modelData.model;
             setLatestMessageOrder(
-              typeof model.messageOrder === "number"
-                ? model.messageOrder
-                : null,
+              typeof model.messageOrder === "number" ? model.messageOrder : null,
             );
             setCurrentCode(model.code || "");
             setStlBase64(model.stlBase64);
             setStepBase64(model.stepBase64);
             setGlbBase64(model.glbBase64);
-            if (model.rootHashes) {
-              setRootHashes(model.rootHashes);
-              setRootHashesLoading(false);
-              setMessages((prev) => {
-                const next = [...prev];
-                for (let i = next.length - 1; i >= 0; i--) {
-                  if (next[i].role === "assistant") {
-                    next[i] = { ...next[i], rootHashes: model.rootHashes };
-                    break;
-                  }
-                }
-                return next;
-              });
-            } else {
-              setRootHashes(null);
-              setTxSeqs(null);
-            }
-            if (model.parameters && Object.keys(model.parameters).length > 0) {
-              setParameters(model.parameters);
-              const modelVals: Record<string, number> = {};
-              Object.entries(model.parameters as Record<string, ParameterSchema>).forEach(([name, schema]) => {
-                if (typeof schema.default === "number") {
-                  modelVals[name] = schema.default;
-                }
-              });
-              setParamValues(modelVals);
-            }
-            if (model.inspection) setInspection(model.inspection);
             if (model.dimViews && Object.keys(model.dimViews).length > 0) {
               setDimViews(model.dimViews);
-              setMessages((prev) => {
-                const next = [...prev];
-                for (let j = next.length - 1; j >= 0; j--) {
-                  if (next[j].role === "assistant") {
-                    next[j] = { ...next[j], dimViews: model.dimViews };
-                    break;
-                  }
-                }
-                return next;
-              });
             }
+            if (model.snapshots && Object.keys(model.snapshots).length > 0) {
+              setSnapshots(model.snapshots);
+            }
+            if (model.rootHashes) {
+              setRootHashes(model.rootHashes);
+              setTxSeqs(model.txSeqs ?? null);
+              setRootHashesLoading(false);
+            }
+            if (model.id) setActiveIterationId(model.id);
+
+            // Stamp the matching assistant bubble with the active hashes so the
+            // 0G proof card is visible before any user interaction.
+            if (model.messageOrder !== undefined) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.role === "assistant" && m.messageOrder === model.messageOrder
+                    ? {
+                        ...m,
+                        rootHashes: m.rootHashes ?? model.rootHashes,
+                        dimViews:
+                          m.dimViews ??
+                          (model.dimViews && Object.keys(model.dimViews).length > 0
+                            ? model.dimViews
+                            : undefined),
+                      }
+                    : m,
+                ),
+              );
+            }
+
+            const modelParams = normalizeParameters(model.parameters);
+            if (Object.keys(modelParams).length > 0) {
+              setParameters(modelParams);
+              setParamValues(parameterDefaults(modelParams));
+            }
+            if (model.inspection) setInspection(model.inspection);
+
             if (model.stlBase64) {
               const bytes = Uint8Array.from(atob(model.stlBase64), (c) =>
                 c.charCodeAt(0),
               );
-              const blob = new Blob([bytes], {
-                type: "application/octet-stream",
-              });
+              const blob = new Blob([bytes], { type: "application/octet-stream" });
               const url = URL.createObjectURL(blob);
               if (stlObjectUrl) URL.revokeObjectURL(stlObjectUrl);
               setStlObjectUrl(url);

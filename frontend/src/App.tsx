@@ -17,7 +17,9 @@ import { useAppStore } from "@/hooks/useAppStore";
 import { useModelStorage } from "@/hooks/useModelStorage";
 import { useChatSessions } from "@/hooks/useChatSessions";
 import { useGeneration } from "@/hooks/useGeneration";
+import { useIterations } from "@/hooks/useIterations";
 import { usePanelLayout } from "@/hooks/usePanelLayout";
+import { RewindConfirmDialog } from "@/components/chat/RewindConfirmDialog";
 
 // Landing-page example prompts — one click fills the composer
 const SUGGESTIONS = [
@@ -32,11 +34,20 @@ export default function App() {
   const store = useAppStore();
 
   // ── Sub-hooks ──
-  const { uploadModelTo0G, storeCurrentIteration } = useModelStorage(store);
-  const { saveCurrentSession, handleLoadSession } = useChatSessions(
+  // Iterations must exist before model storage so uploads can refresh history.
+  const {
+    refreshIterations,
+    previewVersion,
+    exitPreview,
+    requestRewind,
+    cancelRewind,
+    confirmRewind,
+  } = useIterations(store);
+  const { uploadModelTo0G, storeCurrentIteration } = useModelStorage(
     store,
-    uploadModelTo0G,
+    refreshIterations,
   );
+  const { saveCurrentSession, handleLoadSession } = useChatSessions(store);
   const {
     handleGenerate,
     handleClarificationSubmit,
@@ -176,6 +187,8 @@ export default function App() {
                     onEdit={handleEdit}
                     onEditSubmit={handleEditSubmit}
                     onRetry={handleRetry}
+                    onPreviewIteration={previewVersion}
+                    onGoBack={requestRewind}
                   />
                 </ResizablePanel>
 
@@ -186,10 +199,10 @@ export default function App() {
                       togglePanel("chat", chatPanelRef);
                     }}
                     title={collapsed.chat ? "Show chat" : "Hide chat"}
-                    className="absolute top-1/2 left-full -translate-y-1/2 h-7 w-7 glass-hud rounded-md flex items-center justify-center text-adam-text-secondary hover:text-adam-blue hover:bg-adam-blue/15 transition-colors pointer-events-auto cursor-pointer outline-none"
+                    className="absolute top-1/2 left-full -translate-y-1/2 h-9 w-9 glass-hud rounded-lg flex items-center justify-center text-adam-text-secondary hover:text-adam-blue hover:bg-adam-blue/15 transition-colors pointer-events-auto cursor-pointer outline-none"
                   >
                     <NutIcon
-                      className="h-4 w-4"
+                      className="h-5 w-5"
                       spinning={rotatingKey === "chat"}
                     />
                   </button>
@@ -215,6 +228,22 @@ export default function App() {
                     paramUpdateKey={store.paramUpdateKey}
                     isParamUpdating={store.isParamUpdating}
                     isCollapsed={collapsed.preview}
+                    previewStlUrl={store.previewStlUrl}
+                    previewLabel={
+                      store.previewIteration
+                        ? `Previewing v${store.previewIteration.version}`
+                        : null
+                    }
+                    previewLoading={!!store.previewLoadingId}
+                    previewCanGoBack={
+                      !!store.previewIteration &&
+                      store.previewIteration.id !== store.activeIterationId &&
+                      !!store.previewIteration.messageId
+                    }
+                    onExitPreview={exitPreview}
+                    onGoBack={() => {
+                      if (store.previewIteration) requestRewind(store.previewIteration);
+                    }}
                   />
                 </ResizablePanel>
 
@@ -225,10 +254,10 @@ export default function App() {
                       togglePanel("right", rightPanelRef);
                     }}
                     title={collapsed.right ? "Show inspect" : "Hide inspect"}
-                    className="absolute top-1/2 left-0 -translate-x-full -translate-y-1/2 h-7 w-7 glass-hud rounded-md flex items-center justify-center text-adam-text-secondary hover:text-adam-blue hover:bg-adam-blue/15 transition-colors pointer-events-auto cursor-pointer outline-none"
+                    className="absolute top-1/2 left-0 -translate-x-full -translate-y-1/2 h-9 w-9 glass-hud rounded-lg flex items-center justify-center text-adam-text-secondary hover:text-adam-blue hover:bg-adam-blue/15 transition-colors pointer-events-auto cursor-pointer outline-none"
                   >
                     <NutIcon
-                      className="h-4 w-4"
+                      className="h-5 w-5"
                       spinning={rotatingKey === "right"}
                     />
                   </button>
@@ -261,6 +290,16 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      <RewindConfirmDialog
+        target={store.rewindTarget}
+        iterations={store.iterations}
+        messages={store.messages}
+        busy={store.rewinding}
+        error={store.iterationError}
+        onCancel={cancelRewind}
+        onConfirm={confirmRewind}
+      />
     </div>
   );
 }

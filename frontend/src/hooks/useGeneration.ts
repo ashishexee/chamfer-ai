@@ -41,6 +41,7 @@ export function useGeneration(
     sessionId,
     setSessionId,
     chatSessionId,
+    chatSessionIdRef,
     setChatSessionId,
     setLatestMessageOrder,
     setCurrentCode,
@@ -113,7 +114,9 @@ export function useGeneration(
         return;
       }
 
-      const isClarificationContinue = !!overridePrompt;
+      // Edit mode also passes an overridePrompt, but it is a NEW user turn, not
+      // a clarification continuation: it must be shown and persisted.
+      const isClarificationContinue = !!overridePrompt && !editMode;
       const userMsg: Message = {
         role: "user",
         content: activePrompt,
@@ -129,7 +132,9 @@ export function useGeneration(
               timestamp: Date.now(),
             }
           : null;
-      if (!isClarificationContinue && !editMode) {
+      // Append the user message in edit mode too: the transcript that gets
+      // persisted (and restored on reload) must match what is on screen.
+      if (!isClarificationContinue) {
         setMessages((prev) => [...prev, userMsg]);
       }
 
@@ -537,6 +542,13 @@ export function useGeneration(
             sessionId: finalData.sessionId,
             editMode: editMode || false,
             steps: liveSteps,
+            // Persist the exact visual state so reopening the chat restores the
+            // inline snapshot grid and inspection, not just the text bubble.
+            snapshots:
+              Object.keys(liveSnapshots).length > 0
+                ? liveSnapshots
+                : finalData.snapshots || {},
+            inspection: finalData.inspection || liveInspection || undefined,
             timestamp: Date.now(),
           };
           setMessages((prev) => {
@@ -589,15 +601,20 @@ export function useGeneration(
           // Auto-save chat session
           if (auth.isConnected) {
             try {
+              // Mirror the live transcript exactly: on a clarification
+              // continue the answered clarification card is no longer on
+              // screen, so it must not be persisted either.
               const saveSourceMessages = isClarificationContinue
-                ? [...messages, ...(answerMsg ? [answerMsg] : []), assistantMsg]
+                ? [
+                    ...messages.filter((m) => !m.clarification),
+                    ...(answerMsg ? [answerMsg] : []),
+                    assistantMsg,
+                  ]
                 : [...messages, userMsg, assistantMsg];
-              const allMessages = saveSourceMessages.map((m) => ({
-                role: m.role,
-                content: m.content,
-                specifications: m.specifications,
-                provider: m.provider,
-              }));
+              // Send the full messages: the server persists reasoning, steps,
+              // 0G/TEE metadata, snapshots, dim views, inspection and images in
+              // `metadata` so a reload reproduces the live chat exactly.
+              const allMessages = saveSourceMessages.map((m) => ({ ...m }));
               const saveRes = await fetch(`${API_URL}/api/chat/save`, {
                 method: "POST",
                 headers: {
@@ -618,8 +635,26 @@ export function useGeneration(
                     ? saveData.latestMessageOrder
                     : null;
 
-                if (saveData.sessionId) setChatSessionId(saveData.sessionId);
+                if (saveData.sessionId) {
+                  setChatSessionId(saveData.sessionId);
+                  // Sync the ref now so an upload event that arrives before the
+                  // next render is not mistaken for a foreign chat.
+                  chatSessionIdRef.current = saveData.sessionId;
+                }
                 setLatestMessageOrder(savedMessageOrder);
+
+                // Stamp the assistant message with its persisted turn index so
+                // iteration history can be attached to the right bubble.
+                if (savedMessageOrder !== null) {
+                  setMessages((prev) => {
+                    const next = [...prev];
+                    const idx = assistantMessageIdRef.current;
+                    if (idx !== null && next[idx]) {
+                      next[idx] = { ...next[idx], messageOrder: savedMessageOrder };
+                    }
+                    return next;
+                  });
+                }
 
                 if (
                   savedSessionId &&
@@ -628,6 +663,9 @@ export function useGeneration(
                   !finalData.bestEffort
                 ) {
                   setModelStorageStatus("Starting 0G upload...");
+                  // Pin the bubble now: assistantMessageIdRef may point at a
+                  // newer message by the time the upload resolves.
+                  const uploadedMessageIndex = assistantMessageIdRef.current;
                   uploadModelTo0G({
                     sessionId: savedSessionId,
                     messageOrder: savedMessageOrder,
@@ -640,21 +678,25 @@ export function useGeneration(
                       Object.keys(liveDimViews).length > 0
                         ? liveDimViews
                         : finalData.dimViews || {},
+                    snapshots:
+                      Object.keys(liveSnapshots).length > 0
+                        ? liveSnapshots
+                        : finalData.snapshots || {},
                     parameters: finalData.parameters,
                     inspection: finalData.inspection,
                     boundingBox: finalData.inspection?.bounding_box,
+                    source: "generate",
                   })
                     .then((uploadResult) => {
+                      // The user may have switched chats while uploading.
+                      if (chatSessionIdRef.current !== savedSessionId) return;
                       setModelStorageStatus("0G storage complete");
-                      if (uploadResult?.rootHashes) {
+                      if (uploadResult?.rootHashes && uploadedMessageIndex !== null) {
                         setMessages((prev) => {
                           const next = [...prev];
-                          if (
-                            assistantMessageIdRef.current !== null &&
-                            next[assistantMessageIdRef.current]
-                          ) {
-                            next[assistantMessageIdRef.current] = {
-                              ...next[assistantMessageIdRef.current],
+                          if (next[uploadedMessageIndex]) {
+                            next[uploadedMessageIndex] = {
+                              ...next[uploadedMessageIndex],
                               rootHashes: uploadResult.rootHashes,
                             };
                           }
@@ -662,12 +704,20 @@ export function useGeneration(
                         });
                       }
                     })
-                    .catch((err) =>
-                      setModelStorageStatus(
-                        err instanceof Error ? err.message : String(err),
-                      ),
-                    );
+                    .catch((err) => {
+                      if (chatSessionIdRef.current === savedSessionId) {
+                        setModelStorageStatus(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      }
+                    });
                 }
+              } else {
+                setModelStorageStatus(
+                  saveRes.status === 409
+                    ? "This chat changed in another tab — reload before saving."
+                    : `Chat save failed (${saveRes.status}); the model was not stored on 0G.`,
+                );
               }
             } catch {}
           }
@@ -800,6 +850,13 @@ export function useGeneration(
     setGlbBase64(undefined);
     if (stlObjectUrl) URL.revokeObjectURL(stlObjectUrl);
     setStlObjectUrl(null);
+    store.setIterations([]);
+    store.setActiveIterationId(null);
+    store.setPreviewIteration(null);
+    store.setPreviewStlUrl(null);
+    store.setPreviewLoadingId(null);
+    store.setRewindTarget(null);
+    store.setIterationError(null);
     setPrompt("");
     setImages([]);
     setStreamReasoning("");
@@ -810,6 +867,8 @@ export function useGeneration(
     setSessionId(undefined);
     setEditingMessageIndex(null);
     setChatSessionId(null);
+    chatSessionIdRef.current = null;
+    store.setChatMountKey((k) => k + 1);
     setLatestMessageOrder(null);
     setHasUnsavedParamIteration(false);
     setModelStorageStatus(null);

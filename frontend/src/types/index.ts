@@ -18,6 +18,50 @@ export interface RootHashData {
   inspection?: string;
 }
 
+/** 0G submission sequence numbers — used for explorer links. */
+export interface TxSeqData {
+  code?: number;
+  stl?: number;
+  step?: number;
+  glb?: number;
+  dimViews?: number;
+}
+
+export type ModelSource = 'generate' | 'param_tweak' | 'restored';
+export type IterationUploadStatus = 'pending' | 'complete' | 'failed';
+
+/** One stored iteration (append-only per chat, monotonic `version`). */
+export interface ModelIteration {
+  id: string;
+  name: string;
+  version: number;
+  /** Chat turn that spawned this iteration — provenance, not identity. */
+  messageOrder: number;
+  /** Anchor to the assistant message; null for pre-v7 versions (no rewind). */
+  messageId?: string | null;
+  source: ModelSource;
+  restoredFrom?: string | null;
+  uploadStatus: IterationUploadStatus;
+  uploadError?: string | null;
+  rootHashes: RootHashData;
+  txSeqs?: TxSeqData | null;
+  snapshots?: Record<string, string> | null;
+  dimViews?: Record<string, string> | null;
+  parameters?: Record<string, ParameterSchema> | Parameter[] | null;
+  inspection?: InspectionData | null;
+  boundingBox?: { size?: number[] } | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+/** A version plus its decrypted 0G artifacts. */
+export interface IterationContents extends ModelIteration {
+  code?: string;
+  stlBase64?: string;
+  stepBase64?: string;
+  glbBase64?: string;
+}
+
 export interface Parameter {
   name: string;
   default: number;
@@ -76,6 +120,10 @@ export interface Message {
   visionFeedback?: string;
   timestamp?: number;
   rootHashes?: RootHashData;
+  /** Index of this message in the persisted transcript (turn identity). */
+  messageOrder?: number;
+  /** Every stored version spawned by this turn, newest first. */
+  iterations?: ModelIteration[];
 }
 
 /** Reasoning depth accepted by a model (OpenAI-compatible `reasoning_effort`). */

@@ -7,6 +7,26 @@ import { fileToBase64, validateImage, compressImage } from '@/lib/imageUtils';
 import { cn } from '@/lib/utils';
 import type { ReasoningEffort } from '@/types';
 
+const MIN_CHAT_HEIGHT = 56;
+const MIN_HERO_HEIGHT = 96;
+const MAX_COMPOSER_HEIGHT = 420;
+const HEIGHT_KEY = 'vibecad.composerHeight';
+
+function readStoredHeight(key: string): number | null {
+  if (typeof window === 'undefined') return null;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return null;
+  return Math.min(MAX_COMPOSER_HEIGHT, Math.max(MIN_CHAT_HEIGHT, value));
+}
+
+function persistHeight(key: string, height: number | null) {
+  if (typeof window === 'undefined') return;
+  if (height === null) window.localStorage.removeItem(key);
+  else window.localStorage.setItem(key, String(height));
+}
+
 interface ChatInputProps {
   prompt: string;
   setPrompt: (v: string) => void;
@@ -29,10 +49,9 @@ interface ChatInputProps {
 }
 
 /**
- * Composer in the Beautiful UI prompt-bar grammar: one rounded card,
- * a single auto-growing textarea, attachment chips above the input, and
- * ghost controls — without the @// menus, dictation, or shader sweep we
- * don't have backing features for.
+ * Composer: one rounded card, a single textarea, attachment chips, and ghost
+ * controls. The top grip resizes the box vertically (persisted across reloads);
+ * without a manual height it auto-grows with content.
  */
 export function ChatInput({
   prompt, setPrompt, onSubmit, isGenerating, isFocused, setIsFocused,
@@ -43,20 +62,64 @@ export function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [imageError, setImageError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
+  // Chat and landing composers keep independent heights.
+  const heightKey = hero ? `${HEIGHT_KEY}.hero` : HEIGHT_KEY;
+  const [manualHeight, setManualHeight] = useState<number | null>(() => readStoredHeight(heightKey));
 
-  // Auto-grow: compact at rest, expands with content, scrolls past the cap.
-  // The expand toggle locks a taller working area.
+  const minHeight = hero ? MIN_HERO_HEIGHT : MIN_CHAT_HEIGHT;
+  const isExpanded = manualHeight !== null;
+
+  // Manual height wins; otherwise auto-grow from the content, capped.
   useLayoutEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
+
+    if (manualHeight !== null) {
+      el.style.height = `${manualHeight}px`;
+      el.style.overflowY = 'auto';
+      return;
+    }
+
     el.style.height = '0px';
     const content = el.scrollHeight;
-    const min = expanded ? 200 : hero ? 96 : 56;
-    const max = expanded ? 320 : hero ? 220 : 140;
-    el.style.height = `${Math.min(Math.max(content, min), max)}px`;
+    const max = hero ? 220 : 140;
+    el.style.height = `${Math.min(Math.max(content, minHeight), max)}px`;
     el.style.overflowY = content > max ? 'auto' : 'hidden';
-  }, [prompt, expanded, hero]);
+  }, [prompt, manualHeight, minHeight, hero]);
+
+  const toggleExpanded = useCallback(() => {
+    setManualHeight((current) => {
+      const next = current === null ? (hero ? 220 : 200) : null;
+      persistHeight(heightKey, next);
+      return next;
+    });
+  }, [hero, heightKey]);
+
+  const startResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = textareaRef.current?.offsetHeight ?? minHeight;
+
+    const onMove = (ev: PointerEvent) => {
+      const next = Math.min(
+        MAX_COMPOSER_HEIGHT,
+        Math.max(minHeight, startHeight - (ev.clientY - startY)),
+      );
+      setManualHeight(next);
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      setManualHeight((current) => {
+        persistHeight(heightKey, current);
+        return current;
+      });
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }, [minHeight, heightKey]);
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -97,12 +160,24 @@ export function ChatInput({
   return (
     <div
       className={cn(
-        'relative flex flex-col gap-1.5 overflow-hidden rounded-[14px] border bg-adam-background-2/80 backdrop-blur-sm p-1.5 transition-colors duration-150',
+        'relative flex flex-col gap-1.5 overflow-hidden rounded-2xl border bg-adam-background-2/80 backdrop-blur-sm p-2 transition-colors duration-150',
         isFocused
-          ? 'border-adam-blue/40'
+          ? 'border-adam-blue/50 shadow-[0_0_0_2px_rgba(0,166,255,0.10)]'
           : 'border-white/[0.07] hover:border-white/[0.11]'
       )}
     >
+      {/* Drag-to-resize grip */}
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize message box"
+        onPointerDown={startResize}
+        title="Drag to resize"
+        className="group/handle -mt-1 flex h-3 cursor-ns-resize touch-none select-none items-center justify-center"
+      >
+        <span className="h-0.5 w-9 rounded-full bg-white/[0.10] transition-colors group-hover/handle:bg-white/30" />
+      </div>
+
       {showAnimatedPlaceholder && !prompt && !isFocused && (
         <AnimatedPlaceholder visible />
       )}
@@ -139,11 +214,9 @@ export function ChatInput({
         rows={1}
         className={cn(
           'w-full resize-none bg-transparent outline-none placeholder:text-adam-text-tertiary/60 [overflow-wrap:anywhere]',
-          expanded
-            ? 'min-h-[200px] px-1.5 py-[7px] text-[13px] leading-[18px]'
-            : hero
-              ? 'min-h-[96px] px-2 py-2.5 text-sm leading-5'
-              : 'min-h-[56px] px-1.5 py-[7px] text-[13px] leading-[18px]',
+          hero
+            ? 'px-2 py-2.5 text-sm leading-5'
+            : 'px-1.5 py-[7px] text-[13px] leading-[18px]',
           'text-adam-text-primary',
         )}
         placeholder={showAnimatedPlaceholder ? '' : placeholder}
@@ -188,18 +261,18 @@ export function ChatInput({
         )}
 
         <button
-          onClick={() => setExpanded((v) => !v)}
-          aria-label={expanded ? 'Collapse composer' : 'Expand composer'}
-          aria-pressed={expanded}
+          onClick={toggleExpanded}
+          aria-label={isExpanded ? 'Collapse composer' : 'Expand composer'}
+          aria-pressed={isExpanded}
           className={cn(
             'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-[background-color,color,transform] duration-150 active:scale-[0.94]',
-            expanded
+            isExpanded
               ? 'bg-adam-blue/15 text-adam-blue'
               : 'text-adam-text-tertiary hover:bg-white/[0.05] hover:text-adam-text-secondary',
           )}
-          title={expanded ? 'Collapse composer' : 'Expand composer'}
+          title={isExpanded ? 'Collapse composer' : 'Expand composer'}
         >
-          {expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+          {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
         </button>
 
         <div className="ml-auto flex items-center gap-2">

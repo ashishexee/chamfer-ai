@@ -1,11 +1,13 @@
 import { Fragment } from "react";
+import { AlertTriangle, X } from "lucide-react";
 import type { AppStore } from "@/hooks/useAppStore";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { StreamingMessage } from "@/components/chat/StreamingMessage";
 import { ClarificationMessage } from "@/components/chat/ClarificationMessage";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { EditInput } from "@/components/chat/EditInput";
-import { RootHashes } from "@/components/chat/RootHashes";
+import { IterationHistory } from "@/components/chat/IterationHistory";
+import type { ModelIteration } from "@/types";
 
 interface ChatPanelProps {
   store: AppStore;
@@ -17,6 +19,8 @@ interface ChatPanelProps {
   onEdit: (index: number) => void;
   onEditSubmit: (editPrompt: string) => void;
   onRetry: (index: number) => void;
+  onPreviewIteration: (iteration: ModelIteration) => void;
+  onGoBack: (iteration: ModelIteration) => void;
   placeholder?: string;
   showAnimatedPlaceholder?: boolean;
 }
@@ -32,6 +36,8 @@ export function ChatPanel({
   onEdit,
   onEditSubmit,
   onRetry,
+  onPreviewIteration,
+  onGoBack,
   placeholder = "Modify your model...",
   showAnimatedPlaceholder = false,
 }: ChatPanelProps) {
@@ -58,6 +64,12 @@ export function ChatPanel({
     txSeqs,
     rootHashesLoading,
     uploadProgress,
+    activeIterationId,
+    previewIteration,
+    previewLoadingId,
+    iterationError,
+    setIterationError,
+    chatMountKey,
     chatEndRef,
     chatContainerRef,
     handleScroll,
@@ -65,31 +77,16 @@ export function ChatPanel({
 
   return (
     <div className="relative flex h-full min-w-0 flex-col border-r border-adam-neutral-700/40 bg-adam-bg-secondary-dark">
-      {/* Chat header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-adam-neutral-700/40 bg-gradient-to-b from-white/[0.02] to-transparent">
-        <div className="flex items-center gap-2">
-          <div
-            className={`w-1.5 h-1.5 rounded-full ${isGenerating ? "bg-adam-blue animate-pulse" : "bg-adam-neutral-600"}`}
-          />
-          <span className="text-sm font-semibold text-adam-text-primary">
-            Chat
-          </span>
-        </div>
-        <span className="text-[10px] text-adam-text-tertiary/70 tabular-nums">
-          {messages.filter((m) => !m.clarification).length} messages
-        </span>
-      </div>
-
       {/* Message list */}
       <div
         ref={chatContainerRef}
         onScroll={handleScroll}
-        className="chat-scroll flex-1 overflow-y-auto px-3 py-3 space-y-2.5"
+        className="chat-scroll flex-1 overflow-y-auto px-4 py-4 space-y-3.5"
       >
         {messages.map((msg, i) =>
           msg.clarification ? (
             <ClarificationMessage
-              key={i}
+              key={`${chatMountKey}-${i}`}
               questions={msg.clarification}
               onSubmit={onClarificationSubmit}
               isGenerating={isGenerating}
@@ -98,7 +95,11 @@ export function ChatPanel({
             i === messages.length - 1 &&
             msg.role === "assistant" &&
             !msg.content ? null : (
-            <Fragment key={i}>
+            // Chat-scoped key: per-message UI state (expanded prompt, TEE
+            // modal, clarification answers) must not leak across chats, and
+            // must NOT remount when the new chat's id arrives after its first
+            // save (chatMountKey only changes on a real chat switch).
+            <Fragment key={`${chatMountKey}-${i}`}>
               <MessageBubble
                 message={msg}
                 index={i}
@@ -113,19 +114,21 @@ export function ChatPanel({
                 />
               )}
               {msg.role === "assistant" && (
-                <RootHashes
-                  hashes={
-                    msg.rootHashes ||
-                    (i === messages.length - 1 ? rootHashes : null)
+                <IterationHistory
+                  message={msg}
+                  iterations={msg.iterations ?? []}
+                  isNewest={i === messages.length - 1}
+                  activeIterationId={activeIterationId}
+                  loading={i === messages.length - 1 ? rootHashesLoading : false}
+                  progress={i === messages.length - 1 ? uploadProgress : undefined}
+                  fallbackHashes={
+                    msg.rootHashes ?? (i === messages.length - 1 ? rootHashes : null)
                   }
-                  txSeqs={i === messages.length - 1 ? txSeqs : undefined}
-                  loading={
-                    i === messages.length - 1 ? rootHashesLoading : false
-                  }
-                  progress={
-                    i === messages.length - 1 ? uploadProgress : undefined
-                  }
-                  defaultExpanded={i === messages.length - 1}
+                  fallbackTxSeqs={i === messages.length - 1 ? txSeqs : null}
+                  previewId={previewIteration?.id ?? null}
+                  previewLoadingId={previewLoadingId}
+                  onPreview={onPreviewIteration}
+                  onGoBack={onGoBack}
                 />
               )}
             </Fragment>
@@ -143,6 +146,25 @@ export function ChatPanel({
             reasoning={streamReasoning}
           />
         )}
+
+        {/* Iteration actions can fail on any turn, including while the newest
+            bubble is a streaming placeholder. Sticky at the viewport bottom so
+            the feedback is visible even when scrolled up. */}
+        {iterationError && (
+          <div className="sticky bottom-0 z-10 mx-1 flex items-start gap-1.5 rounded-lg border border-red-500/15 bg-[#241a1a]/95 px-3 py-2 text-[11px] leading-relaxed text-red-300 backdrop-blur-md">
+            <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
+            <span className="flex-1">{iterationError}</span>
+            <button
+              type="button"
+              onClick={() => setIterationError(null)}
+              aria-label="Dismiss error"
+              className="rounded p-0.5 text-red-300/70 transition-colors hover:bg-white/[0.06] hover:text-red-200"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        )}
+
         <div ref={chatEndRef} />
       </div>
 

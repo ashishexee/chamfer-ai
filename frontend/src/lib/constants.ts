@@ -13,6 +13,9 @@ export const CHAT_ENDPOINTS = {
 export const MODEL_ENDPOINTS = {
   UPLOAD_0G: '/api/models/upload-to-0g',
   LATEST_FOR_SESSION: (sessionId: string) => `/api/models/session/${sessionId}/latest`,
+  SESSION_ITERATIONS: (sessionId: string) => `/api/models/session/${sessionId}/iterations`,
+  ITERATION_CONTENTS: (modelId: string) => `/api/models/${modelId}/contents`,
+  REWIND_ITERATION: (modelId: string) => `/api/models/${modelId}/rewind`,
 } as const;
 
 export const PROVIDERS: Provider[] = [
